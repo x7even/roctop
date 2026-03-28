@@ -2,7 +2,7 @@
 
 A terminal UI for real-time AMD GPU monitoring via ROCm/rocm-smi, inspired by the fantastic work of [btop](https://github.com/aristocratos/btop).
 
-![roctop screenshot](https://raw.githubusercontent.com/placeholder/roctop/main/screenshot.png)
+![roctop screenshot](https://raw.githubusercontent.com/x7even/roctop/main/screenshot.png)
 
 ## Features
 
@@ -21,25 +21,29 @@ A terminal UI for real-time AMD GPU monitoring via ROCm/rocm-smi, inspired by th
 
 ## Installation
 
-### From source (recommended for development)
+### pipx (recommended)
 
 ```bash
-git clone https://github.com/your-username/roctop.git
+pipx install roctop
+```
+
+### pip
+
+```bash
+pip install roctop
+```
+
+### uv
+
+```bash
+uvx roctop
+```
+
+### From source
+
+```bash
+git clone https://github.com/x7even/roctop.git
 cd roctop
-pip install -e .
-```
-
-### Direct pip install
-
-```bash
-pip install .
-```
-
-A virtual environment is recommended:
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
 pip install -e .
 ```
 
@@ -149,4 +153,4 @@ python -m roctop --refresh 1
 
 ## License
 
-MIT
+[GPL v3](LICENSE) — free to use commercially, modifications must be shared under the same license.

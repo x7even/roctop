@@ -3,12 +3,35 @@ name = "roctop"
 version = "0.1.0"
 description = "Terminal UI for real-time AMD GPU monitoring via ROCm"
 readme = "README.md"
-license = { text = "MIT" }
+license = { text = "GPL-3.0-only" }
 requires-python = ">=3.12"
 dependencies = ["textual>=0.50.0"]
+authors = [
+    { name = "x7even", email = "38901965+x7even@users.noreply.github.com" },
+]
+keywords = ["amd", "gpu", "rocm", "rocm-smi", "monitor", "tui", "terminal"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Monitoring",
+]
+
+[project.urls]
+Homepage = "https://github.com/x7even/roctop"
+Repository = "https://github.com/x7even/roctop"
+Issues = "https://github.com/x7even/roctop/issues"
 
 [project.scripts]
 roctop = "roctop.__main__:main"
+
+[tool.setuptools.package-data]
+roctop = ["*.tcss"]
 
 [build-system]
 requires = ["setuptools>=61"]
