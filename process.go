@@ -70,6 +70,12 @@ func renderProcessTable(procs []ProcessData, width int) string {
 		}
 	}
 
+	// Pad to fixed height (8 content rows + 2 border = 10 lines total)
+	// so the process panel is always anchored at a consistent position.
+	for len(lines) < 8 {
+		lines = append(lines, "")
+	}
+
 	content := strings.Join(lines, "\n")
 	return procBorder.Width(width - 2).Render(content)
 }
