@@ -1,20 +1,7 @@
-# Go binary
+# Go binaries
 /roctop
 /roctop-bin
 dist/
-
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-build/
-*.egg
-.eggs/
-
-# Virtual environments
-.venv/
-venv/
-env/
 
 # Editor / OS
 .DS_Store
@@ -22,10 +9,6 @@ env/
 *.swo
 .idea/
 .vscode/
-
-# Textual / app
-textual.log
-.textual/
 
 # Claude Code local settings
 .claude/
