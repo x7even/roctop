@@ -7,7 +7,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-const sparkIndent = 5
+const sparkIndent = 6
 
 var (
 	warnStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#ff5000")).Bold(true)
@@ -33,6 +33,9 @@ func renderGpuPanel(gpu GpuData, hist *GpuHistory, width int, infoMode bool) str
 	var lines []string
 	if infoMode {
 		lines = renderInfoLines(gpu, cw)
+		for len(lines) < 11 {
+			lines = append(lines, "")
+		}
 	} else {
 		lines = renderMetricLines(gpu, hist, cw)
 	}
@@ -77,9 +80,10 @@ func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
 		renderBar(gpu.GpuUse, 100, bw(pctW), utilGradient) +
 		boldStyle.Render(fmt.Sprintf(" %5.1f%%", gpu.GpuUse))
 
-	// USE sparkline
-	sparkLine1 := strings.Repeat(" ", sparkIndent) +
-		renderSparkline(hist.GpuUse.Values(), sparkW, 0, 100, utilGradient, 100)
+	// USE sparkline (3 rows)
+	useRows := renderMultilineSparkline(hist.GpuUse.Values(), sparkW, 3, 0, 100, utilGradient, 100)
+	useLabel := dimStyle.Render(fmt.Sprintf("%4.0f%% ", gpu.GpuUse))
+	blankPfx := strings.Repeat(" ", sparkIndent)
 
 	// VRAM bar
 	vramLine := labelStyle.Render("VRAM ") +
@@ -92,9 +96,9 @@ func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
 		renderBar(gpu.PowerAvg, gpu.PowerMax, bw(len(pwrSfx)), powerGradient) +
 		boldStyle.Render(pwrSfx)
 
-	// PWR sparkline
-	sparkLine2 := strings.Repeat(" ", sparkIndent) +
-		renderSparkline(hist.Power.Values(), sparkW, 0, gpu.PowerMax, powerGradient, gpu.PowerMax)
+	// PWR sparkline (3 rows)
+	pwrRows := renderMultilineSparkline(hist.Power.Values(), sparkW, 3, 0, gpu.PowerMax, powerGradient, gpu.PowerMax)
+	pwrLabel := dimStyle.Render(fmt.Sprintf("%4.0fW ", gpu.PowerAvg))
 
 	// TEMP bar
 	tempLine := labelStyle.Render("TEMP ") +
@@ -108,7 +112,19 @@ func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
 		dimStyle.Render(" · MEM ") +
 		boldStyle.Render(fmtMHz(gpu.Mclk))
 
-	return []string{title, useLine, sparkLine1, vramLine, pwrLine, sparkLine2, tempLine}
+	return []string{
+		title,
+		useLine,
+		useLabel + useRows[0],
+		blankPfx + useRows[1],
+		blankPfx + useRows[2],
+		vramLine,
+		pwrLine,
+		pwrLabel + pwrRows[0],
+		blankPfx + pwrRows[1],
+		blankPfx + pwrRows[2],
+		tempLine,
+	}
 }
 
 // ── Info view ─────────────────────────────────────────────────────────

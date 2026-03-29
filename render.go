@@ -103,7 +103,7 @@ func renderBar(value, maximum float64, width int, grad gradient) string {
 
 	c := grad[clampIdx(pct)]
 	fillStyle := rgbStyle(c[0], c[1], c[2])
-	emptyStyle := rgbStyle(40, 40, 40)
+	emptyStyle := rgbStyle(60, 60, 60)
 
 	barRunes := []rune(barChars)
 	filled := int(pct / 100 * float64(width))
@@ -147,6 +147,91 @@ func normalizeLevel(value, vmin, vmax float64) int {
 		level = 4
 	}
 	return level
+}
+
+func normalizeToLevels(value, vmin, vmax float64, total int) int {
+	if vmax <= vmin || value <= vmin {
+		return 0
+	}
+	if value >= vmax {
+		return total
+	}
+	t := (value - vmin) / (vmax - vmin)
+	level := int(t * float64(total))
+	if level < 1 {
+		level = 1
+	}
+	if level > total {
+		level = total
+	}
+	return level
+}
+
+func renderMultilineSparkline(history []float64, width, rows int, vmin, vmax float64, grad gradient, gradScale float64) []string {
+	result := make([]string, rows)
+	if width <= 0 {
+		return result
+	}
+
+	needed := width * 2
+	samples := make([]float64, needed)
+	if len(history) >= needed {
+		copy(samples, history[len(history)-needed:])
+	} else {
+		copy(samples[needed-len(history):], history)
+	}
+
+	totalLevels := rows * 4
+	brailleRunes := []rune(braille)
+	emptyStyle := rgbStyle(35, 35, 35)
+
+	rowBuilders := make([]strings.Builder, rows)
+
+	for i := 0; i < width; i++ {
+		vl := samples[i*2]
+		vr := samples[i*2+1]
+
+		fillL := normalizeToLevels(vl, vmin, vmax, totalLevels)
+		fillR := normalizeToLevels(vr, vmin, vmax, totalLevels)
+		isEmpty := fillL == 0 && fillR == 0
+
+		avg := (vl + vr) / 2
+		pct := 0.0
+		if gradScale > 0 {
+			pct = avg / gradScale * 100
+		}
+		c := grad[clampIdx(pct)]
+		colStyle := rgbStyle(c[0], c[1], c[2])
+
+		for r := 0; r < rows; r++ {
+			levelsBelow := (rows - 1 - r) * 4
+			ll := fillL - levelsBelow
+			rl := fillR - levelsBelow
+			if ll < 0 {
+				ll = 0
+			}
+			if ll > 4 {
+				ll = 4
+			}
+			if rl < 0 {
+				rl = 0
+			}
+			if rl > 4 {
+				rl = 4
+			}
+
+			if isEmpty || (ll == 0 && rl == 0) {
+				rowBuilders[r].WriteString(emptyStyle.Render(string(brailleRunes[0])))
+			} else {
+				rowBuilders[r].WriteString(colStyle.Render(string(brailleRunes[ll*5+rl])))
+			}
+		}
+	}
+
+	for i := range result {
+		result[i] = rowBuilders[i].String()
+	}
+	return result
 }
 
 func renderSparkline(history []float64, width int, vmin, vmax float64, grad gradient, gradScale float64) string {

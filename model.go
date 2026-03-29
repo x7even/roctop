@@ -163,7 +163,7 @@ func (m model) View() string {
 	// Calculate layout heights
 	headerH := 1
 	procH := 5 + 2  // 5 content rows + 2 border
-	gpuPanelH := 9  // 7 content rows + 2 border
+	gpuPanelH := 13 // 11 content rows + 2 border
 	availH := m.height - headerH - procH
 	maxPanels := availH / gpuPanelH
 	if maxPanels < 1 {
@@ -176,14 +176,22 @@ func (m model) View() string {
 	intervalSecs := m.interval.Seconds()
 	sections = append(sections, renderHeader(len(m.gpus), intervalSecs, m.paused, m.infoMode, width))
 
-	// GPU panels (up to maxPanels visible without scrolling, show all anyway)
-	for _, gpu := range m.gpus {
-		hist := m.histories[gpu.CardID]
-		if hist == nil {
-			hist = &GpuHistory{}
+	// GPU panels — 2-column grid
+	getHist := func(id int) *GpuHistory {
+		if h := m.histories[id]; h != nil {
+			return h
 		}
-		panel := renderGpuPanel(gpu, hist, width, m.infoMode)
-		sections = append(sections, panel)
+		return &GpuHistory{}
+	}
+	halfWidth := width / 2
+	for i := 0; i < len(m.gpus); i += 2 {
+		if i+1 < len(m.gpus) {
+			left := renderGpuPanel(m.gpus[i], getHist(m.gpus[i].CardID), halfWidth, m.infoMode)
+			right := renderGpuPanel(m.gpus[i+1], getHist(m.gpus[i+1].CardID), halfWidth, m.infoMode)
+			sections = append(sections, lipgloss.JoinHorizontal(lipgloss.Top, left, right))
+		} else {
+			sections = append(sections, renderGpuPanel(m.gpus[i], getHist(m.gpus[i].CardID), width, m.infoMode))
+		}
 	}
 
 	// Process table
