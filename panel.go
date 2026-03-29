@@ -145,6 +145,10 @@ func renderInfoLines(gpu GpuData, cw int) []string {
 		if value == "" {
 			value = "N/A"
 		}
+		runes := []rune(value)
+		if len(runes) > colW {
+			value = string(runes[:colW-1]) + "…"
+		}
 		return labelStyle.Render(fmt.Sprintf("%-10s", label+":")) +
 			" " + boldStyle.Render(fmt.Sprintf("%-*s", colW, value))
 	}
@@ -185,8 +189,13 @@ func renderInfoLines(gpu GpuData, cw int) []string {
 		if len(gpu.ThrottleReasons) > 0 {
 			reasons = strings.Join(gpu.ThrottleReasons, ", ")
 		}
+		reasonRunes := []rune(reasons)
+		maxReasonW := colW - 2 // leave room for "⚠ " prefix
+		if len(reasonRunes) > maxReasonW {
+			reasons = string(reasonRunes[:maxReasonW-1]) + "…"
+		}
 		throttleLine = labelStyle.Render(fmt.Sprintf("%-10s", "Throttle:")) +
-			" " + warnStyle.Render("⚠ "+reasons) +
+			" " + warnStyle.Render(fmt.Sprintf("%-*s", colW, "⚠ "+reasons)) +
 			"  " + labelStyle.Render(fmt.Sprintf("%-10s", "Voltage:")) +
 			" " + boldStyle.Render(fmt.Sprintf("%.0fmV", gpu.Voltage))
 	} else {
