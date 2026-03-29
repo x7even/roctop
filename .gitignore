@@ -1,8 +1,12 @@
+# Go binary
+/roctop
+/roctop-bin
+dist/
+
 # Python
 __pycache__/
 *.py[cod]
 *.egg-info/
-dist/
 build/
 *.egg
 .eggs/
