@@ -24,17 +24,31 @@ A terminal UI for real-time AMD GPU monitoring via ROCm/rocm-smi, inspired by th
 
 ## Installation
 
-### Download binary (recommended)
+### One-line install (recommended)
 
-Grab the latest release for your architecture from the [releases page](https://github.com/x7even/roctop/releases):
+Auto-detects architecture (amd64 / arm64) and installs to `/usr/local/bin`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/x7even/roctop/main/install.sh | bash
+```
+
+To install to a different directory:
+
+```bash
+INSTALL_DIR=~/.local/bin curl -fsSL https://raw.githubusercontent.com/x7even/roctop/main/install.sh | bash
+```
+
+### Manual binary download
+
+Grab the tarball for your architecture from the [releases page](https://github.com/x7even/roctop/releases) and extract it:
 
 ```bash
 # amd64
-curl -L https://github.com/x7even/roctop/releases/latest/download/roctop_linux_amd64.tar.gz | tar xz
+curl -fsSL https://github.com/x7even/roctop/releases/latest/download/roctop_<version>_linux_amd64.tar.gz | tar xz
 sudo mv roctop /usr/local/bin/
 
 # arm64
-curl -L https://github.com/x7even/roctop/releases/latest/download/roctop_linux_arm64.tar.gz | tar xz
+curl -fsSL https://github.com/x7even/roctop/releases/latest/download/roctop_<version>_linux_arm64.tar.gz | tar xz
 sudo mv roctop /usr/local/bin/
 ```
 
@@ -60,6 +74,7 @@ roctop --refresh 1
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--refresh N` | `2.0` | Refresh interval in seconds (minimum 0.5) |
+| `--version` | — | Print version and exit |
 
 ## Keybindings
 
