@@ -2,7 +2,9 @@
 
 A terminal UI for real-time AMD GPU monitoring via ROCm/rocm-smi, inspired by the fantastic work of [btop](https://github.com/aristocratos/btop).
 
-![roctop screenshot](https://raw.githubusercontent.com/x7even/roctop/main/screenshot.png)
+![roctop metrics view](https://raw.githubusercontent.com/x7even/roctop/main/roctop-metrics.png)
+
+![roctop info view](https://raw.githubusercontent.com/x7even/roctop/main/roctop-info.png)
 
 ## Features
 
@@ -71,36 +73,6 @@ roctop --refresh 1
 | `p` | Pause / resume |
 | `↑` / `↓` / `PgUp` / `PgDn` | Scroll GPU panels |
 | Mouse wheel | Scroll GPU panels |
-
-## Panel layout
-
-**Metrics view** (default):
-```
-┌ GPU 0 · Radeon RX 7900 XTX ──────────┐┌ GPU 1 · Radeon RX 7900 XTX ──────────┐
-│ USE  ████████████████░░░░░   75.0%    ││ USE  █████████░░░░░░░░░░░   45.2%    │
-│  75% ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿  ││  45% ⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤  │
-│      ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿  ││      ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  │
-│      ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿  ││      ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀  │
-│ VRAM ██████████████████░░░   58.1GB   ││ VRAM ████████████████░░░░░   52.3GB   │
-│ PWR  ████████████████░░░░░   171W/300W││ PWR  ████████████░░░░░░░░░   134W/300W│
-│ 171W ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿  ││ 134W ⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶⣶  │
-│      ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿  ││      ⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤  │
-│      ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿  ││      ⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀  │
-│ TEMP ████████████░░░░░  77°C · FAN 41%││ TEMP ██████████░░░░░░  71°C · FAN 38%│
-└───────────────────────────────────────┘└───────────────────────────────────────┘
-```
-
-**Info view** (press `i`):
-```
-┌ GPU 0 · Radeon RX 7900 XTX  press i to return ────────────────────────┐
-│ Vendor:    AMD                   GFX:       gfx1201                    │
-│ VBIOS:     113-APM107573-100     PCIe:      03:00.0 x16 16.0GT/s       │
-│ Memory:    Samsung 32.0GB        Max Power: 300W                       │
-│ Driver:    6.16.6                Perf:      auto                       │
-│ Throttle:  none                  Voltage:   1148mV                     │
-│ Unique ID: 0x64ac21a676f77a5b    SKU:       D7170100                   │
-└────────────────────────────────────────────────────────────────────────┘
-```
 
 ## Project structure
 
