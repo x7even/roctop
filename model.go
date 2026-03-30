@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math"
 	"time"
 
 	"github.com/charmbracelet/bubbles/viewport"
@@ -166,9 +167,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.histories[key] = &GpuHistory{}
 			}
 			h := m.histories[key]
-			h.GpuUse.Push(gpu.GpuUse)
-			h.Power.Push(gpu.PowerAvg)
-			h.TempJnc.Push(gpu.TempJunc)
+			if !math.IsNaN(gpu.GpuUse) {
+				h.GpuUse.Push(gpu.GpuUse)
+			}
+			if !math.IsNaN(gpu.PowerAvg) {
+				h.Power.Push(gpu.PowerAvg)
+			}
+			if !math.IsNaN(gpu.TempJunc) {
+				h.TempJnc.Push(gpu.TempJunc)
+			}
 			if prev, ok := byKey[key]; ok {
 				carryStaticFields(&prev, gpu)
 			}

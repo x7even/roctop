@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -114,8 +115,8 @@ func (s *sysfsBackend) CollectData() ([]GpuData, []ProcessData) {
 			gpu.Name = card.vendor + " iGPU"
 		}
 
-		// Utilization
-		gpu.GpuUse = readFloatFile(card.deviceDir+"/gpu_busy_percent", 0)
+		// Utilization (NaN if file missing)
+		gpu.GpuUse = readFloatFileNaN(card.deviceDir + "/gpu_busy_percent")
 
 		// Memory
 		gpu.VramTotal = readInt64File(card.deviceDir+"/mem_info_vram_total", 0)
@@ -130,34 +131,58 @@ func (s *sysfsBackend) CollectData() ([]GpuData, []ProcessData) {
 
 		// Intel fallback for clocks
 		if card.vendor == "Intel" && gpu.Sclk == 0 {
-			gpu.Sclk = int(readFloatFile(card.deviceDir+"/gt/gt0/rps_cur_freq_mhz", 0))
+			v := readFloatFileNaN(card.deviceDir + "/gt/gt0/rps_cur_freq_mhz")
+			if !math.IsNaN(v) {
+				gpu.Sclk = int(v)
+			}
 		}
 
 		// hwmon metrics
 		if card.hwmonDir != "" {
 			// Temperature (millidegrees → degrees)
-			tempMilli := readFloatFile(card.hwmonDir+"/temp1_input", 0)
-			gpu.TempEdge = tempMilli / 1000
-			gpu.TempJunc = gpu.TempEdge
+			tempMilli := readFloatFileNaN(card.hwmonDir + "/temp1_input")
+			if !math.IsNaN(tempMilli) {
+				gpu.TempEdge = tempMilli / 1000
+				gpu.TempJunc = gpu.TempEdge
+			} else {
+				gpu.TempEdge = math.NaN()
+				gpu.TempJunc = math.NaN()
+			}
 
 			// Power (microwatts → watts)
-			powerMicro := readFloatFile(card.hwmonDir+"/power1_average", 0)
-			gpu.PowerAvg = powerMicro / 1_000_000
-			powerCapMicro := readFloatFile(card.hwmonDir+"/power1_cap", 0)
-			gpu.PowerMax = powerCapMicro / 1_000_000
-			if gpu.PowerMax == 0 {
-				gpu.PowerMax = 30 // reasonable iGPU default
+			powerMicro := readFloatFileNaN(card.hwmonDir + "/power1_average")
+			if !math.IsNaN(powerMicro) {
+				gpu.PowerAvg = powerMicro / 1_000_000
+			} else {
+				gpu.PowerAvg = math.NaN()
+			}
+			powerCapMicro := readFloatFileNaN(card.hwmonDir + "/power1_cap")
+			if !math.IsNaN(powerCapMicro) {
+				gpu.PowerMax = powerCapMicro / 1_000_000
+				if gpu.PowerMax == 0 {
+					gpu.PowerMax = 30
+				}
+			} else {
+				gpu.PowerMax = math.NaN()
 			}
 
 			// Voltage (millivolts)
 			gpu.Voltage = readFloatFile(card.hwmonDir+"/in0_input", 0)
 
 			// Fan
-			gpu.FanRPM = int(readFloatFile(card.hwmonDir+"/fan1_input", 0))
-			pwm := readFloatFile(card.hwmonDir+"/pwm1", 0)
-			if pwm > 0 {
+			fanRPM := readFloatFileNaN(card.hwmonDir + "/fan1_input")
+			if !math.IsNaN(fanRPM) {
+				gpu.FanRPM = int(fanRPM)
+			}
+			pwm := readFloatFileNaN(card.hwmonDir + "/pwm1")
+			if !math.IsNaN(pwm) && pwm > 0 {
 				gpu.FanPercent = pwm / 255 * 100
 			}
+		} else {
+			gpu.TempEdge = math.NaN()
+			gpu.TempJunc = math.NaN()
+			gpu.PowerAvg = math.NaN()
+			gpu.PowerMax = math.NaN()
 		}
 
 		gpus = append(gpus, gpu)
@@ -174,6 +199,19 @@ func readStringFile(path string) string {
 		return ""
 	}
 	return strings.TrimSpace(string(data))
+}
+
+// readFloatFileNaN returns NaN if the file doesn't exist or can't be parsed.
+func readFloatFileNaN(path string) float64 {
+	s := readStringFile(path)
+	if s == "" {
+		return math.NaN()
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return math.NaN()
+	}
+	return v
 }
 
 func readFloatFile(path string, def float64) float64 {

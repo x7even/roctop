@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -50,10 +51,6 @@ func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
 	const labelW = 5
 	const pctW = 7 // " 100.0%"
 
-	gbInfo := fmt.Sprintf(" %s/%s", fmtGB(gpu.VramUsed), fmtGB(gpu.VramTotal))
-	pwrSfx := fmt.Sprintf(" %.0fW/%.0fW", gpu.PowerAvg, gpu.PowerMax)
-	tmpSfx := fmt.Sprintf(" %.0f°C · FAN %.0f%% %drpm · CLK %s · MEM %s",
-		gpu.TempJunc, gpu.FanPercent, gpu.FanRPM, fmtMHz(gpu.Sclk), fmtMHz(gpu.Mclk))
 	sparkW := max(8, cw-sparkIndent)
 
 	bw := func(suffixLen int) int {
@@ -63,6 +60,9 @@ func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
 		}
 		return v
 	}
+
+	na := dimStyle.Render("N/A")
+	blankPfx := strings.Repeat(" ", sparkIndent)
 
 	// Title
 	title := cyanStyle.Render(fmt.Sprintf("GPU %d", gpu.CardID))
@@ -79,41 +79,67 @@ func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
 	}
 
 	// USE bar
-	useLine := labelStyle.Render("USE  ") +
-		renderBar(gpu.GpuUse, 100, bw(pctW), utilGradient) +
-		boldStyle.Render(fmt.Sprintf(" %5.1f%%", gpu.GpuUse))
-
-	// USE sparkline (3 rows)
-	useRows := renderMultilineSparkline(hist.GpuUse.Values(), sparkW, 3, 0, 100, utilGradient, 100)
-	useLabel := dimStyle.Render(fmt.Sprintf("%4.0f%% ", gpu.GpuUse))
-	blankPfx := strings.Repeat(" ", sparkIndent)
+	var useLine string
+	var useRows [3]string
+	var useLabel string
+	if math.IsNaN(gpu.GpuUse) {
+		useLine = labelStyle.Render("USE  ") + na
+		useLabel = dimStyle.Render("  N/A ")
+	} else {
+		useLine = labelStyle.Render("USE  ") +
+			renderBar(gpu.GpuUse, 100, bw(pctW), utilGradient) +
+			boldStyle.Render(fmt.Sprintf(" %5.1f%%", gpu.GpuUse))
+		rows := renderMultilineSparkline(hist.GpuUse.Values(), sparkW, 3, 0, 100, utilGradient, 100)
+		useRows[0] = rows[0]
+		useRows[1] = rows[1]
+		useRows[2] = rows[2]
+		useLabel = dimStyle.Render(fmt.Sprintf("%4.0f%% ", gpu.GpuUse))
+	}
 
 	// VRAM bar
+	gbInfo := fmt.Sprintf(" %s/%s", fmtGB(gpu.VramUsed), fmtGB(gpu.VramTotal))
 	vramLine := labelStyle.Render("VRAM ") +
 		renderBar(gpu.VramPercent, 100, bw(pctW+len(gbInfo)), utilGradient) +
 		boldStyle.Render(fmt.Sprintf(" %5.1f%%", gpu.VramPercent)) +
 		dimStyle.Render(gbInfo)
 
 	// PWR bar
-	pwrLine := labelStyle.Render("PWR  ") +
-		renderBar(gpu.PowerAvg, gpu.PowerMax, bw(len(pwrSfx)), powerGradient) +
-		boldStyle.Render(pwrSfx)
-
-	// PWR sparkline (3 rows)
-	pwrRows := renderMultilineSparkline(hist.Power.Values(), sparkW, 3, 0, gpu.PowerMax, powerGradient, gpu.PowerMax)
-	pwrLabel := dimStyle.Render(fmt.Sprintf("%4.0fW ", gpu.PowerAvg))
+	var pwrLine string
+	var pwrRows [3]string
+	var pwrLabel string
+	if math.IsNaN(gpu.PowerAvg) || math.IsNaN(gpu.PowerMax) {
+		pwrLine = labelStyle.Render("PWR  ") + na
+		pwrLabel = dimStyle.Render("  N/A ")
+	} else {
+		pwrSfx := fmt.Sprintf(" %.0fW/%.0fW", gpu.PowerAvg, gpu.PowerMax)
+		pwrLine = labelStyle.Render("PWR  ") +
+			renderBar(gpu.PowerAvg, gpu.PowerMax, bw(len(pwrSfx)), powerGradient) +
+			boldStyle.Render(pwrSfx)
+		rows := renderMultilineSparkline(hist.Power.Values(), sparkW, 3, 0, gpu.PowerMax, powerGradient, gpu.PowerMax)
+		pwrRows[0] = rows[0]
+		pwrRows[1] = rows[1]
+		pwrRows[2] = rows[2]
+		pwrLabel = dimStyle.Render(fmt.Sprintf("%4.0fW ", gpu.PowerAvg))
+	}
 
 	// TEMP bar
-	tempLine := labelStyle.Render("TEMP ") +
-		renderBar(gpu.TempJunc, 110, bw(len(tmpSfx)), tempGradient) +
-		boldStyle.Render(fmt.Sprintf(" %.0f°C", gpu.TempJunc)) +
-		dimStyle.Render(" · FAN ") +
-		boldStyle.Render(fmt.Sprintf("%.0f%%", gpu.FanPercent)) +
-		dimStyle.Render(fmt.Sprintf(" %drpm", gpu.FanRPM)) +
-		dimStyle.Render(" · CLK ") +
-		boldStyle.Render(fmtMHz(gpu.Sclk)) +
-		dimStyle.Render(" · MEM ") +
-		boldStyle.Render(fmtMHz(gpu.Mclk))
+	var tempLine string
+	if math.IsNaN(gpu.TempJunc) {
+		tempLine = labelStyle.Render("TEMP ") + na
+	} else {
+		tmpSfx := fmt.Sprintf(" %.0f°C · FAN %.0f%% %drpm · CLK %s · MEM %s",
+			gpu.TempJunc, gpu.FanPercent, gpu.FanRPM, fmtMHz(gpu.Sclk), fmtMHz(gpu.Mclk))
+		tempLine = labelStyle.Render("TEMP ") +
+			renderBar(gpu.TempJunc, 110, bw(len(tmpSfx)), tempGradient) +
+			boldStyle.Render(fmt.Sprintf(" %.0f°C", gpu.TempJunc)) +
+			dimStyle.Render(" · FAN ") +
+			boldStyle.Render(fmt.Sprintf("%.0f%%", gpu.FanPercent)) +
+			dimStyle.Render(fmt.Sprintf(" %drpm", gpu.FanRPM)) +
+			dimStyle.Render(" · CLK ") +
+			boldStyle.Render(fmtMHz(gpu.Sclk)) +
+			dimStyle.Render(" · MEM ") +
+			boldStyle.Render(fmtMHz(gpu.Mclk))
+	}
 
 	return []string{
 		title,
