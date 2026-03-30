@@ -262,11 +262,18 @@ func renderInfoLines(gpu GpuData, cw int) []string {
 		title,
 		kvRow("Vendor", vendor, "GFX", gpu.GfxVersion),
 		kvRow("VBIOS", gpu.Vbios, "PCIe", strings.TrimSpace(pcieVal)),
-		kvRow("Memory", strings.TrimSpace(memVal), "Max Power", fmt.Sprintf("%.0fW", gpu.PowerMax)),
+		kvRow("Memory", strings.TrimSpace(memVal), "Max Power", fmtWattsOrNA(gpu.PowerMax)),
 		kvRow("Driver", gpu.DriverVersion, "Perf", perfLevel),
 		throttleLine,
 		kvRow("Unique ID", gpu.UniqueID, "SKU", gpu.SKU),
 	}
+}
+
+func fmtWattsOrNA(v float64) string {
+	if math.IsNaN(v) {
+		return ""
+	}
+	return fmt.Sprintf("%.0fW", v)
 }
 
 func max(a, b int) int {
