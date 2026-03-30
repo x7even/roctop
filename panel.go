@@ -16,6 +16,7 @@ var (
 	boldStyle  = lipgloss.NewStyle().Bold(true)
 	dimStyle   = lipgloss.NewStyle().Faint(true)
 	cyanStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#00d7ff")).Bold(true)
+	noDataStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#5a1a1a"))
 )
 
 var panelBorder = lipgloss.NewStyle().
@@ -61,7 +62,6 @@ func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
 		return v
 	}
 
-	na := dimStyle.Render("N/A")
 	blankPfx := strings.Repeat(" ", sparkIndent)
 
 	// Title
@@ -83,8 +83,10 @@ func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
 	var useRows [3]string
 	var useLabel string
 	if math.IsNaN(gpu.GpuUse) {
-		useLine = labelStyle.Render("USE  ") + na
-		useLabel = dimStyle.Render("  N/A ")
+		useLine = labelStyle.Render("USE  ") +
+			renderBar(0, 100, bw(pctW), utilGradient) +
+			noDataStyle.Render(fmt.Sprintf(" %5.1f%%", 0.0))
+		useLabel = noDataStyle.Render(fmt.Sprintf("%4.0f%% ", 0.0))
 	} else {
 		useLine = labelStyle.Render("USE  ") +
 			renderBar(gpu.GpuUse, 100, bw(pctW), utilGradient) +
@@ -107,25 +109,45 @@ func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
 	var pwrLine string
 	var pwrRows [3]string
 	var pwrLabel string
-	if math.IsNaN(gpu.PowerAvg) || math.IsNaN(gpu.PowerMax) {
-		pwrLine = labelStyle.Render("PWR  ") + na
-		pwrLabel = dimStyle.Render("  N/A ")
+	pwrAvg := gpu.PowerAvg
+	pwrMax := gpu.PowerMax
+	if math.IsNaN(pwrAvg) {
+		pwrAvg = 0
+	}
+	if math.IsNaN(pwrMax) {
+		pwrMax = 30
+	}
+	pwrSfx := fmt.Sprintf(" %.0fW/%.0fW", pwrAvg, pwrMax)
+	pwrValStyle := boldStyle
+	if math.IsNaN(gpu.PowerAvg) {
+		pwrValStyle = noDataStyle
+	}
+	pwrLine = labelStyle.Render("PWR  ") +
+		renderBar(pwrAvg, pwrMax, bw(len(pwrSfx)), powerGradient) +
+		pwrValStyle.Render(pwrSfx)
+	if math.IsNaN(gpu.PowerAvg) {
+		pwrLabel = noDataStyle.Render(fmt.Sprintf("%4.0fW ", 0.0))
 	} else {
-		pwrSfx := fmt.Sprintf(" %.0fW/%.0fW", gpu.PowerAvg, gpu.PowerMax)
-		pwrLine = labelStyle.Render("PWR  ") +
-			renderBar(gpu.PowerAvg, gpu.PowerMax, bw(len(pwrSfx)), powerGradient) +
-			boldStyle.Render(pwrSfx)
-		rows := renderMultilineSparkline(hist.Power.Values(), sparkW, 3, 0, gpu.PowerMax, powerGradient, gpu.PowerMax)
+		rows := renderMultilineSparkline(hist.Power.Values(), sparkW, 3, 0, pwrMax, powerGradient, pwrMax)
 		pwrRows[0] = rows[0]
 		pwrRows[1] = rows[1]
 		pwrRows[2] = rows[2]
-		pwrLabel = dimStyle.Render(fmt.Sprintf("%4.0fW ", gpu.PowerAvg))
+		pwrLabel = dimStyle.Render(fmt.Sprintf("%4.0fW ", pwrAvg))
 	}
 
 	// TEMP bar
 	var tempLine string
 	if math.IsNaN(gpu.TempJunc) {
-		tempLine = labelStyle.Render("TEMP ") + na
+		tempLine = labelStyle.Render("TEMP ") +
+			renderBar(0, 110, bw(len(" 0°C · FAN 0% 0rpm · CLK 0MHz · MEM 0MHz")), tempGradient) +
+			noDataStyle.Render(fmt.Sprintf(" %s°C", "0")) +
+			dimStyle.Render(" · FAN ") +
+			noDataStyle.Render(fmt.Sprintf("%.0f%%", gpu.FanPercent)) +
+			dimStyle.Render(fmt.Sprintf(" %drpm", gpu.FanRPM)) +
+			dimStyle.Render(" · CLK ") +
+			boldStyle.Render(fmtMHz(gpu.Sclk)) +
+			dimStyle.Render(" · MEM ") +
+			boldStyle.Render(fmtMHz(gpu.Mclk))
 	} else {
 		tmpSfx := fmt.Sprintf(" %.0f°C · FAN %.0f%% %drpm · CLK %s · MEM %s",
 			gpu.TempJunc, gpu.FanPercent, gpu.FanRPM, fmtMHz(gpu.Sclk), fmtMHz(gpu.Mclk))
