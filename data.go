@@ -15,6 +15,21 @@ import (
 
 const maxHistory = 120
 
+// ── Backend interface ───────────────────────────────────────────────
+
+type GpuBackend interface {
+	CollectData() ([]GpuData, []ProcessData)
+	Name() string
+}
+
+var activeBackend GpuBackend
+
+// ── ROCm backend ────────────────────────────────────────────────────
+
+type rocmBackend struct{}
+
+func (r *rocmBackend) Name() string { return "rocm" }
+
 const rocmSMI = "rocm-smi"
 
 var rocmSMIFlags = []string{
@@ -493,6 +508,13 @@ func collectStaticInfo(gpus []GpuData) {
 // ── Main collection entry point ──────────────────────────────────────
 
 func collectGpuData() ([]GpuData, []ProcessData) {
+	if activeBackend == nil {
+		return nil, nil
+	}
+	return activeBackend.CollectData()
+}
+
+func (r *rocmBackend) CollectData() ([]GpuData, []ProcessData) {
 	data := runJSON(rocmSMIFlags...)
 	if data == nil {
 		return nil, nil
