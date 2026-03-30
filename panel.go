@@ -65,8 +65,11 @@ func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
 	}
 
 	// Title
-	title := cyanStyle.Render(fmt.Sprintf("GPU %d", gpu.CardID)) +
-		" · " + boldStyle.Render(gpu.Name)
+	title := cyanStyle.Render(fmt.Sprintf("GPU %d", gpu.CardID))
+	if gpu.Backend != "" && len(activeBackends) > 1 {
+		title += dimStyle.Render(fmt.Sprintf(" [%s]", gpu.Backend))
+	}
+	title += " · " + boldStyle.Render(gpu.Name)
 	if gpu.ThrottleStatus != 0 {
 		reasons := "UNKNOWN"
 		if len(gpu.ThrottleReasons) > 0 {
@@ -135,8 +138,11 @@ func renderInfoLines(gpu GpuData, cw int) []string {
 		colW = 8
 	}
 
-	title := cyanStyle.Render(fmt.Sprintf("GPU %d", gpu.CardID)) +
-		" · " + boldStyle.Render(gpu.Name) +
+	title := cyanStyle.Render(fmt.Sprintf("GPU %d", gpu.CardID))
+	if gpu.Backend != "" && len(activeBackends) > 1 {
+		title += dimStyle.Render(fmt.Sprintf(" [%s]", gpu.Backend))
+	}
+	title += " · " + boldStyle.Render(gpu.Name) +
 		"  " + dimStyle.Render("press ") +
 		lipgloss.NewStyle().Foreground(lipgloss.Color("#ffd700")).Bold(true).Render("i") +
 		dimStyle.Render(" to return to metrics")

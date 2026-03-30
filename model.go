@@ -30,7 +30,7 @@ type dataMsg struct {
 type model struct {
 	gpus      []GpuData
 	procs     []ProcessData
-	histories map[int]*GpuHistory
+	histories map[string]*GpuHistory
 	interval  time.Duration
 	paused    bool
 	infoMode  bool
@@ -43,7 +43,7 @@ type model struct {
 
 func newModel(interval time.Duration) model {
 	return model{
-		histories: make(map[int]*GpuHistory),
+		histories: make(map[string]*GpuHistory),
 		interval:  interval,
 	}
 }
@@ -92,8 +92,8 @@ func tickCmd(interval time.Duration) tea.Cmd {
 
 // ── GPU content renderer ──────────────────────────────────────────────
 
-func (m model) getHist(id int) *GpuHistory {
-	if h := m.histories[id]; h != nil {
+func (m model) getHist(key string) *GpuHistory {
+	if h := m.histories[key]; h != nil {
 		return h
 	}
 	return &GpuHistory{}
@@ -107,11 +107,11 @@ func (m model) renderGpuContent() string {
 	var rows []string
 	for i := 0; i < len(m.gpus); i += 2 {
 		if i+1 < len(m.gpus) {
-			left := renderGpuPanel(m.gpus[i], m.getHist(m.gpus[i].CardID), halfWidth, m.infoMode)
-			right := renderGpuPanel(m.gpus[i+1], m.getHist(m.gpus[i+1].CardID), halfWidth, m.infoMode)
+			left := renderGpuPanel(m.gpus[i], m.getHist(m.gpus[i].HistKey()), halfWidth, m.infoMode)
+			right := renderGpuPanel(m.gpus[i+1], m.getHist(m.gpus[i+1].HistKey()), halfWidth, m.infoMode)
 			rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, left, right))
 		} else {
-			rows = append(rows, renderGpuPanel(m.gpus[i], m.getHist(m.gpus[i].CardID), m.width, m.infoMode))
+			rows = append(rows, renderGpuPanel(m.gpus[i], m.getHist(m.gpus[i].HistKey()), m.width, m.infoMode))
 		}
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
@@ -155,20 +155,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case dataMsg:
-		byID := make(map[int]GpuData)
+		byKey := make(map[string]GpuData)
 		for _, g := range m.gpus {
-			byID[g.CardID] = g
+			byKey[g.HistKey()] = g
 		}
 		for i := range msg.gpus {
 			gpu := &msg.gpus[i]
-			if _, exists := m.histories[gpu.CardID]; !exists {
-				m.histories[gpu.CardID] = &GpuHistory{}
+			key := gpu.HistKey()
+			if _, exists := m.histories[key]; !exists {
+				m.histories[key] = &GpuHistory{}
 			}
-			h := m.histories[gpu.CardID]
+			h := m.histories[key]
 			h.GpuUse.Push(gpu.GpuUse)
 			h.Power.Push(gpu.PowerAvg)
 			h.TempJnc.Push(gpu.TempJunc)
-			if prev, ok := byID[gpu.CardID]; ok {
+			if prev, ok := byKey[key]; ok {
 				carryStaticFields(&prev, gpu)
 			}
 		}

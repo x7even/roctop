@@ -27,7 +27,7 @@ func renderHeader(gpuCount int, refreshSecs float64, paused, infoMode bool, widt
 		sb.WriteString(headerDim.Render(" to resume"))
 	} else {
 		sb.WriteString(headerCyan.Render("roctop"))
-		sb.WriteString(headerDim.Render(" " + version + " [" + activeBackend.Name() + "]"))
+		sb.WriteString(headerDim.Render(" " + version + " [" + backendNames() + "]"))
 		sb.WriteString(headerGreen.Render(fmt.Sprintf("  %d GPU", gpuCount)))
 		if gpuCount != 1 {
 			sb.WriteString(headerGreen.Render("s"))

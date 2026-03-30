@@ -69,7 +69,8 @@ func (n *nvidiaBackend) collectGPUs() []GpuData {
 
 func parseNvidiaGPULine(f []string) GpuData {
 	gpu := GpuData{
-		Vendor: "NVIDIA",
+		Vendor:  "NVIDIA",
+		Backend: "nvidia",
 	}
 
 	gpu.CardID = parseInt(f[0], 0)

@@ -22,7 +22,7 @@ type GpuBackend interface {
 	Name() string
 }
 
-var activeBackend GpuBackend
+var activeBackends []GpuBackend
 
 // ── ROCm backend ────────────────────────────────────────────────────
 
@@ -66,8 +66,9 @@ var throttleBits = map[int]string{
 }
 
 type GpuData struct {
-	CardID   int
-	Name     string
+	CardID  int
+	Backend string
+	Name    string
 	TempEdge float64
 	TempJunc float64
 	TempMem  float64
@@ -146,6 +147,77 @@ type GpuHistory struct {
 	GpuUse  RingBuffer
 	Power   RingBuffer
 	TempJnc RingBuffer
+}
+
+func (g GpuData) HistKey() string {
+	return g.Backend + ":" + strconv.Itoa(g.CardID)
+}
+
+func backendOrder(name string) int {
+	switch name {
+	case "rocm":
+		return 0
+	case "nvidia":
+		return 1
+	case "sysfs":
+		return 2
+	default:
+		return 9
+	}
+}
+
+func backendNames() string {
+	var names []string
+	for _, b := range activeBackends {
+		names = append(names, b.Name())
+	}
+	return strings.Join(names, "+")
+}
+
+func mergeProcesses(procs []ProcessData) []ProcessData {
+	byPID := make(map[int]*ProcessData)
+	for _, p := range procs {
+		if existing, ok := byPID[p.PID]; ok {
+			existing.VramUsed += p.VramUsed
+			for _, gid := range p.GpuIDs {
+				found := false
+				for _, eg := range existing.GpuIDs {
+					if eg == gid {
+						found = true
+						break
+					}
+				}
+				if !found {
+					existing.GpuIDs = append(existing.GpuIDs, gid)
+				}
+			}
+		} else {
+			copy := p
+			byPID[p.PID] = &copy
+		}
+	}
+	result := make([]ProcessData, 0, len(byPID))
+	for _, p := range byPID {
+		result = append(result, *p)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].VramUsed > result[j].VramUsed
+	})
+	return result
+}
+
+// normalizePCI extracts the BB:DD.F portion for reliable comparison.
+func normalizePCI(addr string) string {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return ""
+	}
+	// Find last occurrence of DDDD:BB:DD.F or BB:DD.F pattern
+	m := reBDF.FindString(addr)
+	if m != "" {
+		return m
+	}
+	return addr
 }
 
 // ── Parsing helpers ──────────────────────────────────────────────────
@@ -508,10 +580,21 @@ func collectStaticInfo(gpus []GpuData) {
 // ── Main collection entry point ──────────────────────────────────────
 
 func collectGpuData() ([]GpuData, []ProcessData) {
-	if activeBackend == nil {
-		return nil, nil
+	var allGpus []GpuData
+	var allProcs []ProcessData
+	for _, b := range activeBackends {
+		gpus, procs := b.CollectData()
+		allGpus = append(allGpus, gpus...)
+		allProcs = append(allProcs, procs...)
 	}
-	return activeBackend.CollectData()
+	sort.SliceStable(allGpus, func(i, j int) bool {
+		if allGpus[i].Backend != allGpus[j].Backend {
+			return backendOrder(allGpus[i].Backend) < backendOrder(allGpus[j].Backend)
+		}
+		return allGpus[i].CardID < allGpus[j].CardID
+	})
+	allProcs = mergeProcesses(allProcs)
+	return allGpus, allProcs
 }
 
 func (r *rocmBackend) CollectData() ([]GpuData, []ProcessData) {
@@ -534,7 +617,9 @@ func (r *rocmBackend) CollectData() ([]GpuData, []ProcessData) {
 			if err != nil {
 				continue
 			}
-			gpus = append(gpus, parseGPU(cardID, d))
+			g := parseGPU(cardID, d)
+			g.Backend = "rocm"
+			gpus = append(gpus, g)
 		} else if kl == "system" {
 			procs = parseProcesses(d)
 		}

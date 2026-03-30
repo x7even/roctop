@@ -10,14 +10,37 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-func detectBackend() GpuBackend {
+func detectBackends() []GpuBackend {
+	var backends []GpuBackend
+	claimedPCI := make(map[string]bool)
+
 	if _, err := exec.LookPath("rocm-smi"); err == nil {
-		return &rocmBackend{}
+		b := &rocmBackend{}
+		gpus, _ := b.CollectData()
+		for _, g := range gpus {
+			if g.PcieBus != "" {
+				claimedPCI[normalizePCI(g.PcieBus)] = true
+			}
+		}
+		backends = append(backends, b)
 	}
+
 	if _, err := exec.LookPath("nvidia-smi"); err == nil {
-		return &nvidiaBackend{}
+		b := &nvidiaBackend{}
+		gpus, _ := b.CollectData()
+		for _, g := range gpus {
+			if g.PcieBus != "" {
+				claimedPCI[normalizePCI(g.PcieBus)] = true
+			}
+		}
+		backends = append(backends, b)
 	}
-	return nil
+
+	if sysfs := newSysfsBackend(claimedPCI); sysfs != nil {
+		backends = append(backends, sysfs)
+	}
+
+	return backends
 }
 
 // version is injected at build time via ldflags: -X main.version=x.y.z
@@ -33,10 +56,10 @@ func main() {
 		os.Exit(0)
 	}
 
-	activeBackend = detectBackend()
-	if activeBackend == nil {
-		fmt.Fprintln(os.Stderr, "error: no supported GPU tools found on PATH.")
-		fmt.Fprintln(os.Stderr, "roctop requires either ROCm (rocm-smi) or NVIDIA (nvidia-smi) drivers.")
+	activeBackends = detectBackends()
+	if len(activeBackends) == 0 {
+		fmt.Fprintln(os.Stderr, "error: no supported GPUs found.")
+		fmt.Fprintln(os.Stderr, "roctop requires ROCm (rocm-smi), NVIDIA (nvidia-smi), or a compatible GPU in sysfs.")
 		os.Exit(1)
 	}
 
