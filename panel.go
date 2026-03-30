@@ -196,15 +196,17 @@ func renderInfoLines(gpu GpuData, cw int) []string {
 		dimStyle.Render(" to return to metrics")
 
 	kv := func(label, value string) string {
+		style := boldStyle
 		if value == "" {
 			value = "N/A"
+			style = noDataStyle
 		}
 		runes := []rune(value)
 		if len(runes) > colW {
 			value = string(runes[:colW-1]) + "…"
 		}
 		return labelStyle.Render(fmt.Sprintf("%-10s", label+":")) +
-			" " + boldStyle.Render(fmt.Sprintf("%-*s", colW, value))
+			" " + style.Render(fmt.Sprintf("%-*s", colW, value))
 	}
 
 	kvRow := func(l1, v1, l2, v2 string) string {
