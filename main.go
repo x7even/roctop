@@ -17,6 +17,9 @@ func detectBackends() []GpuBackend {
 	if _, err := exec.LookPath("rocm-smi"); err == nil {
 		b := &rocmBackend{}
 		gpus, _ := b.CollectData()
+		if len(gpus) == 0 {
+			fmt.Fprintln(os.Stderr, "warning: rocm-smi found but returned no GPUs")
+		}
 		for _, g := range gpus {
 			if g.PcieBus != "" {
 				claimedPCI[normalizePCI(g.PcieBus)] = true
@@ -28,6 +31,9 @@ func detectBackends() []GpuBackend {
 	if _, err := exec.LookPath("nvidia-smi"); err == nil {
 		b := &nvidiaBackend{}
 		gpus, _ := b.CollectData()
+		if len(gpus) == 0 {
+			fmt.Fprintln(os.Stderr, "warning: nvidia-smi found but returned no GPUs")
+		}
 		for _, g := range gpus {
 			if g.PcieBus != "" {
 				claimedPCI[normalizePCI(g.PcieBus)] = true

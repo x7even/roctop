@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/csv"
+	"fmt"
 	"os"
 	"os/exec"
 	"sort"
@@ -41,20 +43,25 @@ func runNvidiaSMI(args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
+const nvidiaExpectedFields = 18
+
 func (n *nvidiaBackend) collectGPUs() []GpuData {
 	output := runNvidiaSMI(nvidiaGPUQuery...)
 	if output == "" {
 		return nil
 	}
 
+	r := csv.NewReader(strings.NewReader(output))
+	r.TrimLeadingSpace = true
+
 	var gpus []GpuData
-	for _, line := range strings.Split(output, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
+	for {
+		fields, err := r.Read()
+		if err != nil {
+			break
 		}
-		fields := strings.Split(line, ", ")
-		if len(fields) < 18 {
+		if len(fields) < nvidiaExpectedFields {
+			fmt.Fprintf(os.Stderr, "warning: nvidia-smi returned %d fields, expected %d\n", len(fields), nvidiaExpectedFields)
 			continue
 		}
 		gpu := parseNvidiaGPULine(fields)
@@ -138,12 +145,14 @@ func (n *nvidiaBackend) collectProcesses(gpus []GpuData) []ProcessData {
 
 	procs := make(map[int]*ProcessData)
 
-	for _, line := range strings.Split(output, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "[") {
-			continue
+	r := csv.NewReader(strings.NewReader(output))
+	r.TrimLeadingSpace = true
+
+	for {
+		fields, err := r.Read()
+		if err != nil {
+			break
 		}
-		fields := strings.Split(line, ", ")
 		if len(fields) < 2 {
 			continue
 		}

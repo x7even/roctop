@@ -217,7 +217,7 @@ func normalizePCI(addr string) string {
 	if m != "" {
 		return m
 	}
-	return addr
+	return ""
 }
 
 // ── Parsing helpers ──────────────────────────────────────────────────
@@ -477,7 +477,7 @@ func applyMetrics(gpus []GpuData) {
 }
 
 func pcieRootPort(pcieBus string) string {
-	if pcieBus == "" {
+	if pcieBus == "" || !reBDF.MatchString(pcieBus) {
 		return ""
 	}
 	sysfs := fmt.Sprintf("/sys/bus/pci/devices/%s", pcieBus)
