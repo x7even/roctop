@@ -70,6 +70,7 @@ func renderHelp(width int) string {
 		key("q / Ctrl+C", "Quit"),
 		key("i", "Toggle info / metrics view"),
 		key("?", "Toggle this help panel"),
+		key("l", "Toggle event log (shows rocm-smi errors and warnings)"),
 		key("p", "Pause / resume live updates"),
 		key("r", "Force an immediate refresh"),
 		key("+ / =", "Increase refresh rate (faster, min 0.5 s)"),

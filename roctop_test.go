@@ -469,16 +469,97 @@ func TestRenderMetricLinesNaNInputs(t *testing.T) {
 	}
 }
 
+// ── log buffer ───────────────────────────────────────────────────────
+
+func TestLogfAppends(t *testing.T) {
+	// Reset global state for this test.
+	logMu.Lock()
+	logEntries = nil
+	logMu.Unlock()
+
+	logf("test event %d", 1)
+	logf("test event %d", 2)
+
+	entries := getLogEntries()
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 log entries, got %d", len(entries))
+	}
+	if entries[0].msg != "test event 1" || entries[1].msg != "test event 2" {
+		t.Errorf("unexpected messages: %v", entries)
+	}
+}
+
+func TestLogfCapsAtMax(t *testing.T) {
+	logMu.Lock()
+	logEntries = nil
+	logMu.Unlock()
+
+	for i := 0; i < maxLogEntries+10; i++ {
+		logf("entry %d", i)
+	}
+	entries := getLogEntries()
+	if len(entries) != maxLogEntries {
+		t.Errorf("expected %d entries, got %d", maxLogEntries, len(entries))
+	}
+	// Oldest entries should have been dropped; first remaining is entry 10.
+	if entries[0].msg != "entry 10" {
+		t.Errorf("first entry = %q, want \"entry 10\"", entries[0].msg)
+	}
+}
+
+func TestRenderLogPanelEmpty(t *testing.T) {
+	logMu.Lock()
+	logEntries = nil
+	logMu.Unlock()
+
+	out := renderLogPanel(120)
+	if !strings.Contains(out, "No events") {
+		t.Error("empty log panel should say 'No events'")
+	}
+}
+
+func TestRenderLogPanelShowsEntries(t *testing.T) {
+	logMu.Lock()
+	logEntries = nil
+	logMu.Unlock()
+
+	logf("rocm-smi --showmetrics: context deadline exceeded")
+	out := renderLogPanel(120)
+	if !strings.Contains(out, "rocm-smi") {
+		t.Error("log panel should show logged entry")
+	}
+}
+
+func TestHeaderLogCount(t *testing.T) {
+	logMu.Lock()
+	logEntries = nil
+	logMu.Unlock()
+
+	// No entries — hint should just say "l:log"
+	h := renderHeader(4, 2.0, false, false, false, false, false, 200)
+	if !strings.Contains(h, "l") {
+		t.Error("header should contain l keybinding")
+	}
+
+	logf("an error occurred")
+	// renderHeader(gpuCount, refreshSecs, paused, infoMode, helpMode, logMode, dataStale, width)
+	h = renderHeader(4, 2.0, false, false, false, false, false, 200)
+	if !strings.Contains(h, "log(1)") {
+		t.Errorf("header should show log(1) when there is 1 entry, got: %s", h)
+	}
+}
+
 // ── stale data indicator ─────────────────────────────────────────────
 
 func TestHeaderStaleIndicator(t *testing.T) {
 	// Stale flag should appear in the header when dataStale is true.
-	withStale := renderHeader(4, 2.0, false, false, false, true, 200)
+	// renderHeader(gpuCount, refreshSecs, paused, infoMode, helpMode, logMode, dataStale, width)
+	withStale := renderHeader(4, 2.0, false, false, false, false, true, 200)
 	if !strings.Contains(withStale, "STALE") {
 		t.Error("header with dataStale=true should contain 'STALE'")
 	}
 	// No stale indicator when data is fresh.
-	withoutStale := renderHeader(4, 2.0, false, false, false, false, 200)
+	withoutStale := renderHeader(4, 2.0, false, false, false, false, false, 200)
 	if strings.Contains(withoutStale, "STALE") {
 		t.Error("header with dataStale=false should not contain 'STALE'")
 	}

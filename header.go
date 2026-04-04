@@ -17,9 +17,10 @@ var (
 	headerInfo  = lipgloss.NewStyle().Background(lipgloss.Color("#0d1a2d")).Foreground(lipgloss.Color("#ff00ff")).Bold(true)
 	headerHelp  = lipgloss.NewStyle().Background(lipgloss.Color("#0d1a2d")).Foreground(lipgloss.Color("#00ff87")).Bold(true)
 	headerStale = lipgloss.NewStyle().Background(lipgloss.Color("#0d1a2d")).Foreground(lipgloss.Color("#ff8700")).Bold(true)
+	headerLog   = lipgloss.NewStyle().Background(lipgloss.Color("#0d1a2d")).Foreground(lipgloss.Color("#ff8700")).Bold(true)
 )
 
-func renderHeader(gpuCount int, refreshSecs float64, paused, infoMode, helpMode, dataStale bool, width int) string {
+func renderHeader(gpuCount int, refreshSecs float64, paused, infoMode, helpMode, logMode, dataStale bool, width int) string {
 	var sb strings.Builder
 
 	if paused {
@@ -37,6 +38,8 @@ func renderHeader(gpuCount int, refreshSecs float64, paused, infoMode, helpMode,
 		switch {
 		case helpMode:
 			sb.WriteString(headerHelp.Render("  HELP"))
+		case logMode:
+			sb.WriteString(headerLog.Render("  LOG"))
 		case infoMode:
 			sb.WriteString(headerInfo.Render("  INFO MODE"))
 		default:
@@ -45,6 +48,7 @@ func renderHeader(gpuCount int, refreshSecs float64, paused, infoMode, helpMode,
 		if dataStale {
 			sb.WriteString(headerStale.Render("  ⚠ STALE DATA"))
 		}
+		logCount := len(getLogEntries())
 		sb.WriteString(headerKey.Render("  q"))
 		sb.WriteString(headerDim.Render(":quit  "))
 		sb.WriteString(headerKey.Render("+"))
@@ -58,7 +62,13 @@ func renderHeader(gpuCount int, refreshSecs float64, paused, infoMode, helpMode,
 		sb.WriteString(headerKey.Render("i"))
 		sb.WriteString(headerDim.Render(":info  "))
 		sb.WriteString(headerKey.Render("?"))
-		sb.WriteString(headerDim.Render(":help"))
+		sb.WriteString(headerDim.Render(":help  "))
+		sb.WriteString(headerKey.Render("l"))
+		if logCount > 0 {
+			sb.WriteString(headerLog.Render(fmt.Sprintf(":log(%d)", logCount)))
+		} else {
+			sb.WriteString(headerDim.Render(":log"))
+		}
 	}
 
 	line := sb.String()

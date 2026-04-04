@@ -36,8 +36,9 @@ type model struct {
 	paused        bool
 	infoMode      bool
 	helpMode      bool
+	logMode       bool
 	dataStale     bool // true when the last fetch returned no data
-	gpuVpOffset   int  // saved GPU scroll position while help is open
+	gpuVpOffset   int  // saved GPU scroll position while help/log is open
 	width         int
 	height        int
 	ready         bool
@@ -111,9 +112,12 @@ func tickCmd(interval time.Duration) tea.Cmd {
 // setViewportContent sets the viewport to help or GPU content depending
 // on the current mode, preserving the scroll offset for GPU content.
 func (m *model) setViewportContent() {
-	if m.helpMode {
+	switch {
+	case m.helpMode:
 		m.vp.SetContent(renderHelp(m.width))
-	} else {
+	case m.logMode:
+		m.vp.SetContent(renderLogPanel(m.width))
+	default:
 		m.vp.SetContent(m.renderGpuContent())
 	}
 }
@@ -217,7 +221,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.gpus = msg.gpus
 			m.procs = msg.procs
 		}
-		if m.vpReady && !m.helpMode {
+		if m.vpReady && !m.helpMode && !m.logMode {
 			yOff := m.vp.YOffset
 			m.vp.SetContent(m.renderGpuContent())
 			m.vp.SetYOffset(yOff)
@@ -237,7 +241,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				carryStaticFields(&sg, &m.gpus[i])
 			}
 		}
-		if m.vpReady && !m.helpMode {
+		if m.vpReady && !m.helpMode && !m.logMode {
 			yOff := m.vp.YOffset
 			m.vp.SetContent(m.renderGpuContent())
 			m.vp.SetYOffset(yOff)
@@ -268,8 +272,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "p":
 			m.paused = !m.paused
 		case "i":
-			if m.helpMode {
+			if m.helpMode || m.logMode {
 				m.helpMode = false
+				m.logMode = false
 				if m.vpReady {
 					m.setViewportContent()
 					m.vp.SetYOffset(m.gpuVpOffset)
@@ -292,9 +297,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.gpuVpOffset = m.vp.YOffset
 				m.helpMode = true
+				m.logMode = false
 				if m.vpReady {
 					m.vp.SetContent(renderHelp(m.width))
 					m.vp.GotoTop()
+				}
+			}
+		case "l":
+			if m.logMode {
+				m.logMode = false
+				if m.vpReady {
+					m.setViewportContent()
+					m.vp.SetYOffset(m.gpuVpOffset)
+				}
+			} else {
+				m.gpuVpOffset = m.vp.YOffset
+				m.logMode = true
+				m.helpMode = false
+				if m.vpReady {
+					m.vp.SetContent(renderLogPanel(m.width))
+					m.vp.GotoBottom()
 				}
 			}
 		default:
@@ -318,7 +340,7 @@ func (m model) View() string {
 	}
 
 	intervalSecs := m.interval.Seconds()
-	header := renderHeader(len(m.gpus), intervalSecs, m.paused, m.infoMode, m.helpMode, m.dataStale, m.width)
+	header := renderHeader(len(m.gpus), intervalSecs, m.paused, m.infoMode, m.helpMode, m.logMode, m.dataStale, m.width)
 	proc := renderProcessTable(m.procs, m.width)
 
 	return lipgloss.JoinVertical(lipgloss.Left, header, m.vp.View(), proc)
