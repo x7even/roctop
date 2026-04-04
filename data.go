@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -285,13 +286,21 @@ func runJSON(extraFlags ...string) map[string]interface{} {
 
 	args := append([]string{"--json"}, extraFlags...)
 	cmd := exec.CommandContext(ctx, rocmSMI, args...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
+		detail := strings.TrimSpace(stderr.String())
+		if detail == "" {
+			detail = err.Error()
+		}
+		logf("rocm-smi %s: %s", strings.Join(extraFlags, " "), detail)
 		return nil
 	}
 
 	var result map[string]interface{}
 	if err := json.Unmarshal(out, &result); err != nil {
+		logf("rocm-smi %s: JSON parse error: %s", strings.Join(extraFlags, " "), err.Error())
 		return nil
 	}
 	return result

@@ -18,7 +18,7 @@ func detectBackends() []GpuBackend {
 		b := &rocmBackend{}
 		gpus, _ := b.CollectData()
 		if len(gpus) == 0 {
-			fmt.Fprintln(os.Stderr, "warning: rocm-smi found but returned no GPUs")
+			logf("warning: rocm-smi found but returned no GPUs")
 		}
 		for _, g := range gpus {
 			if g.PcieBus != "" {
@@ -32,7 +32,7 @@ func detectBackends() []GpuBackend {
 		b := &nvidiaBackend{}
 		gpus, _ := b.CollectData()
 		if len(gpus) == 0 {
-			fmt.Fprintln(os.Stderr, "warning: nvidia-smi found but returned no GPUs")
+			logf("warning: nvidia-smi found but returned no GPUs")
 		}
 		for _, g := range gpus {
 			if g.PcieBus != "" {
