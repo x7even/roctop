@@ -79,6 +79,7 @@ func renderHelp(width int) string {
 		key("+ / =", "Increase refresh rate (faster, min 0.5 s)"),
 		key("-", "Decrease refresh rate (slower, max 30 s)"),
 		key("↑ ↓ / scroll", "Scroll GPU panels"),
+		key("0–9", "Focus GPU by index at full width (same key or Esc to exit)"),
 	}
 
 	return strings.Join(lines, "\n")

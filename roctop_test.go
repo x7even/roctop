@@ -537,14 +537,14 @@ func TestHeaderLogCount(t *testing.T) {
 	logMu.Unlock()
 
 	// No entries — hint should just say "l:log"
-	h := renderHeader(4, 2.0, false, false, false, false, false, 200)
+	h := renderHeader(4, 2.0, false, false, false, false, false, -1, 200)
 	if !strings.Contains(h, "l") {
 		t.Error("header should contain l keybinding")
 	}
 
 	logf("an error occurred")
 	// renderHeader(gpuCount, refreshSecs, paused, infoMode, helpMode, logMode, dataStale, width)
-	h = renderHeader(4, 2.0, false, false, false, false, false, 200)
+	h = renderHeader(4, 2.0, false, false, false, false, false, -1, 200)
 	if !strings.Contains(h, "log(1)") {
 		t.Errorf("header should show log(1) when there is 1 entry, got: %s", h)
 	}
@@ -555,12 +555,12 @@ func TestHeaderLogCount(t *testing.T) {
 func TestHeaderStaleIndicator(t *testing.T) {
 	// Stale flag should appear in the header when dataStale is true.
 	// renderHeader(gpuCount, refreshSecs, paused, infoMode, helpMode, logMode, dataStale, width)
-	withStale := renderHeader(4, 2.0, false, false, false, false, true, 200)
+	withStale := renderHeader(4, 2.0, false, false, false, false, true, -1, 200)
 	if !strings.Contains(withStale, "STALE") {
 		t.Error("header with dataStale=true should contain 'STALE'")
 	}
 	// No stale indicator when data is fresh.
-	withoutStale := renderHeader(4, 2.0, false, false, false, false, false, 200)
+	withoutStale := renderHeader(4, 2.0, false, false, false, false, false, -1, 200)
 	if strings.Contains(withoutStale, "STALE") {
 		t.Error("header with dataStale=false should not contain 'STALE'")
 	}
@@ -767,6 +767,50 @@ func TestRenderInfoLinesECCRow(t *testing.T) {
 	}
 	if !strings.Contains(out, "3145680") {
 		t.Error("info view should show uncorrectable error count")
+	}
+}
+
+// ── GPU focus view ───────────────────────────────────────────────────
+
+func TestFocusModeShowsSingleGPU(t *testing.T) {
+	m := gpuModel(4, 200)
+	m.focusIdx = 2
+	out := m.renderGpuContent()
+	lines := strings.Split(out, "\n")
+	// Only one panel worth of lines — not four stacked.
+	if len(lines) > panelLines+4 {
+		t.Errorf("focus mode should show one panel (%d lines), got %d", panelLines+4, len(lines))
+	}
+	// The focused GPU's name should appear.
+	if !strings.Contains(out, "GPU 2") {
+		t.Errorf("focus mode should show GPU 2, got:\n%s", out)
+	}
+}
+
+func TestFocusModeOutOfRangeIgnored(t *testing.T) {
+	m := gpuModel(2, 200)
+	m.focusIdx = 99 // no such GPU
+	out := m.renderGpuContent()
+	// Should fall through to normal layout (2 GPUs visible).
+	if !strings.Contains(out, "GPU 0") || !strings.Contains(out, "GPU 1") {
+		t.Error("out-of-range focusIdx should fall back to normal layout")
+	}
+}
+
+func TestFocusModeHeaderIndicator(t *testing.T) {
+	h := renderHeader(4, 2.0, false, false, false, false, false, 1, 200)
+	if !strings.Contains(h, "FOCUS") {
+		t.Errorf("header should show FOCUS indicator when focusIdx >= 0, got: %s", h)
+	}
+	if !strings.Contains(h, "1") {
+		t.Errorf("header should show focused GPU index, got: %s", h)
+	}
+}
+
+func TestNoFocusModeHeaderNoIndicator(t *testing.T) {
+	h := renderHeader(4, 2.0, false, false, false, false, false, -1, 200)
+	if strings.Contains(h, "FOCUS") {
+		t.Errorf("header should not show FOCUS when focusIdx == -1, got: %s", h)
 	}
 }
 

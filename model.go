@@ -2,6 +2,7 @@ package main
 
 import (
 	"math"
+	"strconv"
 	"time"
 
 	"github.com/charmbracelet/bubbles/viewport"
@@ -39,6 +40,7 @@ type model struct {
 	logMode       bool
 	dataStale     bool // true when the last fetch returned no data
 	gpuVpOffset   int  // saved GPU scroll position while help/log is open
+	focusIdx      int  // index into m.gpus of focused GPU; -1 = no focus
 	width         int
 	height        int
 	ready         bool
@@ -51,6 +53,7 @@ func newModel(interval time.Duration) model {
 	return model{
 		histories: make(map[string]*GpuHistory),
 		interval:  interval,
+		focusIdx:  -1,
 	}
 }
 
@@ -80,6 +83,12 @@ func carryStaticFields(from, to *GpuData) {
 	}
 	if to.PcieRootPort == "" && from.PcieRootPort != "" {
 		to.PcieRootPort = from.PcieRootPort
+	}
+	if to.RasCorrectable == 0 && from.RasCorrectable != 0 {
+		to.RasCorrectable = from.RasCorrectable
+	}
+	if to.RasUncorrectable == 0 && from.RasUncorrectable != 0 {
+		to.RasUncorrectable = from.RasUncorrectable
 	}
 }
 
@@ -138,6 +147,12 @@ const minColWidth = 60
 func (m model) renderGpuContent() string {
 	if len(m.gpus) == 0 {
 		return "\n  " + dimStyle.Render("Waiting for GPU data...")
+	}
+
+	// Focus mode: single GPU at full width.
+	if m.focusIdx >= 0 && m.focusIdx < len(m.gpus) {
+		gpu := m.gpus[m.focusIdx]
+		return renderGpuPanel(gpu, m.getHist(gpu.HistKey()), m.width, m.infoMode)
 	}
 
 	twoCol := len(m.gpus) > 1 && m.width/2 >= minColWidth
@@ -333,6 +348,28 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.vp.GotoBottom()
 				}
 			}
+		case "esc":
+			if m.focusIdx >= 0 {
+				m.focusIdx = -1
+				if m.vpReady {
+					m.setViewportContent()
+				}
+			}
+		case "0", "1", "2", "3", "4", "5", "6", "7", "8", "9":
+			idx, _ := strconv.Atoi(msg.String())
+			if idx < len(m.gpus) {
+				if m.focusIdx == idx {
+					m.focusIdx = -1 // same key toggles off
+				} else {
+					m.focusIdx = idx
+					m.helpMode = false
+					m.logMode = false
+				}
+				if m.vpReady {
+					m.setViewportContent()
+					m.vp.GotoTop()
+				}
+			}
 		default:
 			var cmd tea.Cmd
 			m.vp, cmd = m.vp.Update(msg)
@@ -354,7 +391,7 @@ func (m model) View() string {
 	}
 
 	intervalSecs := m.interval.Seconds()
-	header := renderHeader(len(m.gpus), intervalSecs, m.paused, m.infoMode, m.helpMode, m.logMode, m.dataStale, m.width)
+	header := renderHeader(len(m.gpus), intervalSecs, m.paused, m.infoMode, m.helpMode, m.logMode, m.dataStale, m.focusIdx, m.width)
 	proc := renderProcessTable(m.procs, m.width)
 
 	return lipgloss.JoinVertical(lipgloss.Left, header, m.vp.View(), proc)
