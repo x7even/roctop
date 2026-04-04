@@ -127,6 +127,8 @@ func TestNormalizePCI(t *testing.T) {
 		{"0000:06:00.0", "0000:06:00.0"},
 		{"00000000:64:00.0", "0000:64:00.0"},
 		{"  0000:01:00.0  ", "0000:01:00.0"},
+		{"0000:C3:00.0", "0000:c3:00.0"},  // rocm-smi uppercase → lowercase
+		{"0000:c3:00.0", "0000:c3:00.0"},  // sysfs already lowercase
 		{"", ""},
 		{"garbage", ""},
 		{"../../../etc/passwd", ""},
@@ -411,6 +413,57 @@ func TestCollectStaticInfoByIDOnlyRocm(t *testing.T) {
 	}
 	if gpus[4].Vbios != "" {
 		t.Errorf("sysfs GPU at index 4 should not have Vbios set, got %q", gpus[4].Vbios)
+	}
+}
+
+// ── renderMetricLines output ─────────────────────────────────────────
+
+func TestRenderMetricLinesCount(t *testing.T) {
+	gpu := GpuData{
+		CardID:      0,
+		Backend:     "rocm",
+		Name:        "Radeon RX 7900 XTX",
+		GpuUse:      75.0,
+		MemActivity: 40.0,
+		VramPercent: 50.0,
+		VramTotal:   8 * 1024 * 1024 * 1024,
+		VramUsed:    4 * 1024 * 1024 * 1024,
+		PowerAvg:    200.0,
+		PowerMax:    355.0,
+		TempJunc:    68.0,
+		TempEdge:    62.0,
+		TempMem:     60.0,
+		FanPercent:  45.0,
+		FanRPM:      1800,
+		Sclk:        2500,
+		Mclk:        1000,
+	}
+	hist := &GpuHistory{}
+	lines := renderMetricLines(gpu, hist, 80)
+	if len(lines) != panelLines {
+		t.Errorf("renderMetricLines returned %d lines, want %d (panelLines)", len(lines), panelLines)
+	}
+}
+
+func TestRenderMetricLinesNaNInputs(t *testing.T) {
+	// All-NaN GPU (e.g. a sysfs GPU with no sensors readable) must not panic
+	// and must still return panelLines lines.
+	gpu := GpuData{
+		CardID:      1,
+		Backend:     "sysfs",
+		Name:        "Intel iGPU",
+		GpuUse:      math.NaN(),
+		MemActivity: math.NaN(),
+		PowerAvg:    math.NaN(),
+		PowerMax:    math.NaN(),
+		TempJunc:    math.NaN(),
+		TempEdge:    math.NaN(),
+		TempMem:     math.NaN(),
+	}
+	hist := &GpuHistory{}
+	lines := renderMetricLines(gpu, hist, 80)
+	if len(lines) != panelLines {
+		t.Errorf("renderMetricLines (all-NaN) returned %d lines, want %d", len(lines), panelLines)
 	}
 }
 
