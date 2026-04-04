@@ -41,12 +41,14 @@ func renderProcessTable(procs []ProcessData, width int) string {
 		procHeader.Render(fmt.Sprintf("%-8s %-20s %-12s %10s", "PID", "Name", "GPUs", "VRAM")),
 	)
 
+	const maxShown = 6
+
 	if len(procs) == 0 {
 		lines = append(lines, dimStyle.Render("  no GPU processes"))
 	} else {
 		shown := procs
-		if len(shown) > 6 {
-			shown = shown[:6]
+		if len(shown) > maxShown {
+			shown = shown[:maxShown]
 		}
 		for _, p := range shown {
 			sort.Ints(p.GpuIDs)
@@ -59,14 +61,17 @@ func renderProcessTable(procs []ProcessData, width int) string {
 				gpuStr = strings.Join(parts, ",")
 			}
 			name := p.Name
-			if len(name) > 19 {
-				name = name[:19]
+			if len([]rune(name)) > 19 {
+				name = string([]rune(name)[:18]) + "…"
 			}
 			line := procPID.Render(fmt.Sprintf("%-8d", p.PID)) +
 				fmt.Sprintf("%-20s", name) +
 				procGPU.Render(fmt.Sprintf("%-12s", gpuStr)) +
 				procVRAM.Render(fmt.Sprintf("%10s", fmtBytes(p.VramUsed)))
 			lines = append(lines, line)
+		}
+		if extra := len(procs) - maxShown; extra > 0 {
+			lines = append(lines, dimStyle.Render(fmt.Sprintf("  + %d more", extra)))
 		}
 	}
 

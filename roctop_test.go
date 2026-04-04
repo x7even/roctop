@@ -769,6 +769,59 @@ func TestRenderInfoLinesECCRow(t *testing.T) {
 	}
 }
 
+// ── renderProcessTable ───────────────────────────────────────────────
+
+func makeProcs(n int) []ProcessData {
+	procs := make([]ProcessData, n)
+	for i := range procs {
+		procs[i] = ProcessData{PID: 1000 + i, Name: "proc", GpuIDs: []int{0}, VramUsed: 1 << 20}
+	}
+	return procs
+}
+
+func TestProcessTableNoOverflow(t *testing.T) {
+	out := renderProcessTable(makeProcs(3), 120)
+	if strings.Contains(out, "more") {
+		t.Error("should not show 'more' indicator when procs <= 6")
+	}
+}
+
+func TestProcessTableOverflowIndicator(t *testing.T) {
+	out := renderProcessTable(makeProcs(9), 120)
+	if !strings.Contains(out, "+ 3 more") {
+		t.Errorf("expected '+ 3 more' indicator, got:\n%s", out)
+	}
+}
+
+func TestProcessTableExactlyMax(t *testing.T) {
+	out := renderProcessTable(makeProcs(6), 120)
+	if strings.Contains(out, "more") {
+		t.Error("exactly 6 procs should not show 'more' indicator")
+	}
+}
+
+func TestProcessTableNameEllipsis(t *testing.T) {
+	procs := []ProcessData{{PID: 42, Name: "averylongprocessname_xyz", GpuIDs: []int{0}, VramUsed: 1 << 20}}
+	out := renderProcessTable(procs, 120)
+	if !strings.Contains(out, "…") {
+		t.Error("name longer than 19 chars should be truncated with ellipsis")
+	}
+	if strings.Contains(out, "averylongprocessname_xyz") {
+		t.Error("full long name should not appear — should be truncated")
+	}
+}
+
+func TestProcessTableShortNameNoEllipsis(t *testing.T) {
+	procs := []ProcessData{{PID: 42, Name: "shortname", GpuIDs: []int{0}, VramUsed: 1 << 20}}
+	out := renderProcessTable(procs, 120)
+	if strings.Contains(out, "…") {
+		t.Error("short name should not have ellipsis")
+	}
+	if !strings.Contains(out, "shortname") {
+		t.Error("short name should appear unchanged")
+	}
+}
+
 // ── Test helper ─────────────────────────────────────────────────────
 
 func writeTestFile(path, content string) error {
