@@ -36,7 +36,8 @@ type model struct {
 	paused        bool
 	infoMode      bool
 	helpMode      bool
-	gpuVpOffset   int // saved GPU scroll position while help is open
+	dataStale     bool // true when the last fetch returned no data
+	gpuVpOffset   int  // saved GPU scroll position while help is open
 	width         int
 	height        int
 	ready         bool
@@ -183,32 +184,39 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case dataMsg:
-		byKey := make(map[string]GpuData)
-		for _, g := range m.gpus {
-			byKey[g.HistKey()] = g
+		if len(msg.gpus) == 0 {
+			// Fetch failed or returned nothing — keep existing data and
+			// flag it as stale so the header can warn the user.
+			m.dataStale = true
+		} else {
+			m.dataStale = false
+			byKey := make(map[string]GpuData)
+			for _, g := range m.gpus {
+				byKey[g.HistKey()] = g
+			}
+			for i := range msg.gpus {
+				gpu := &msg.gpus[i]
+				key := gpu.HistKey()
+				if _, exists := m.histories[key]; !exists {
+					m.histories[key] = &GpuHistory{}
+				}
+				h := m.histories[key]
+				if !math.IsNaN(gpu.GpuUse) {
+					h.GpuUse.Push(gpu.GpuUse)
+				}
+				if !math.IsNaN(gpu.PowerAvg) {
+					h.Power.Push(gpu.PowerAvg)
+				}
+				if !math.IsNaN(gpu.TempJunc) {
+					h.TempJnc.Push(gpu.TempJunc)
+				}
+				if prev, ok := byKey[key]; ok {
+					carryStaticFields(&prev, gpu)
+				}
+			}
+			m.gpus = msg.gpus
+			m.procs = msg.procs
 		}
-		for i := range msg.gpus {
-			gpu := &msg.gpus[i]
-			key := gpu.HistKey()
-			if _, exists := m.histories[key]; !exists {
-				m.histories[key] = &GpuHistory{}
-			}
-			h := m.histories[key]
-			if !math.IsNaN(gpu.GpuUse) {
-				h.GpuUse.Push(gpu.GpuUse)
-			}
-			if !math.IsNaN(gpu.PowerAvg) {
-				h.Power.Push(gpu.PowerAvg)
-			}
-			if !math.IsNaN(gpu.TempJunc) {
-				h.TempJnc.Push(gpu.TempJunc)
-			}
-			if prev, ok := byKey[key]; ok {
-				carryStaticFields(&prev, gpu)
-			}
-		}
-		m.gpus = msg.gpus
-		m.procs = msg.procs
 		if m.vpReady && !m.helpMode {
 			yOff := m.vp.YOffset
 			m.vp.SetContent(m.renderGpuContent())
@@ -310,7 +318,7 @@ func (m model) View() string {
 	}
 
 	intervalSecs := m.interval.Seconds()
-	header := renderHeader(len(m.gpus), intervalSecs, m.paused, m.infoMode, m.helpMode, m.width)
+	header := renderHeader(len(m.gpus), intervalSecs, m.paused, m.infoMode, m.helpMode, m.dataStale, m.width)
 	proc := renderProcessTable(m.procs, m.width)
 
 	return lipgloss.JoinVertical(lipgloss.Left, header, m.vp.View(), proc)
