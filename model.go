@@ -131,18 +131,32 @@ func (m model) getHist(key string) *GpuHistory {
 	return &GpuHistory{}
 }
 
+// minColWidth is the minimum panel width (chars) required to use two columns.
+// Below this threshold the layout switches to a single full-width column.
+const minColWidth = 60
+
 func (m model) renderGpuContent() string {
 	if len(m.gpus) == 0 {
 		return "\n  " + dimStyle.Render("Waiting for GPU data...")
 	}
-	halfWidth := m.width / 2
+
+	twoCol := len(m.gpus) > 1 && m.width/2 >= minColWidth
+
 	var rows []string
-	for i := 0; i < len(m.gpus); i += 2 {
-		if i+1 < len(m.gpus) {
-			left := renderGpuPanel(m.gpus[i], m.getHist(m.gpus[i].HistKey()), halfWidth, m.infoMode)
-			right := renderGpuPanel(m.gpus[i+1], m.getHist(m.gpus[i+1].HistKey()), halfWidth, m.infoMode)
-			rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, left, right))
-		} else {
+	if twoCol {
+		halfWidth := m.width / 2
+		for i := 0; i < len(m.gpus); i += 2 {
+			if i+1 < len(m.gpus) {
+				left := renderGpuPanel(m.gpus[i], m.getHist(m.gpus[i].HistKey()), halfWidth, m.infoMode)
+				right := renderGpuPanel(m.gpus[i+1], m.getHist(m.gpus[i+1].HistKey()), halfWidth, m.infoMode)
+				rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, left, right))
+			} else {
+				// Odd GPU at end gets full width.
+				rows = append(rows, renderGpuPanel(m.gpus[i], m.getHist(m.gpus[i].HistKey()), m.width, m.infoMode))
+			}
+		}
+	} else {
+		for i := range m.gpus {
 			rows = append(rows, renderGpuPanel(m.gpus[i], m.getHist(m.gpus[i].HistKey()), m.width, m.infoMode))
 		}
 	}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"math"
 	"os"
 	"strings"
@@ -766,6 +767,84 @@ func TestRenderInfoLinesECCRow(t *testing.T) {
 	}
 	if !strings.Contains(out, "3145680") {
 		t.Error("info view should show uncorrectable error count")
+	}
+}
+
+// ── adaptive layout ──────────────────────────────────────────────────
+
+func gpuModel(gpuCount, width int) model {
+	m := newModel(2 * time.Second)
+	m.width = width
+	m.height = 50
+	for i := 0; i < gpuCount; i++ {
+		m.gpus = append(m.gpus, GpuData{
+			CardID:  i,
+			Backend: "rocm",
+			Name:    fmt.Sprintf("GPU %d", i),
+			GpuUse:  50.0,
+			PowerAvg: 100.0,
+			PowerMax: 300.0,
+			TempJunc: 60.0,
+		})
+	}
+	return m
+}
+
+func TestTwoColumnWideTerminal(t *testing.T) {
+	// 200-wide terminal with 2 GPUs → two columns, each panel < full width.
+	m := gpuModel(2, 200)
+	out := m.renderGpuContent()
+	// Both GPU titles should appear on the same rendered row (joined horizontally),
+	// so the total line count should be panelLines + 2 border rows, not doubled.
+	lines := strings.Split(out, "\n")
+	if len(lines) > panelLines+4 {
+		t.Errorf("2 GPUs on wide terminal should produce ~1 row of panels (%d lines), got %d",
+			panelLines+4, len(lines))
+	}
+}
+
+func TestOneColumnNarrowTerminal(t *testing.T) {
+	// 100-wide terminal (< 120) with 2 GPUs → single column, panels stacked.
+	m := gpuModel(2, 100)
+	out := m.renderGpuContent()
+	lines := strings.Split(out, "\n")
+	// Two stacked panels should produce roughly 2*(panelLines+2) lines.
+	minExpected := 2 * (panelLines + 2)
+	if len(lines) < minExpected {
+		t.Errorf("2 GPUs on narrow terminal should stack (%d+ lines), got %d", minExpected, len(lines))
+	}
+}
+
+func TestOneColumnSingleGPU(t *testing.T) {
+	// Single GPU always uses full width regardless of terminal width.
+	m := gpuModel(1, 200)
+	out := m.renderGpuContent()
+	lines := strings.Split(out, "\n")
+	// Should only be one panel's worth of lines.
+	if len(lines) > panelLines+4 {
+		t.Errorf("single GPU should always be one column (%d lines), got %d", panelLines+4, len(lines))
+	}
+}
+
+func TestTwoColumnThresholdExact(t *testing.T) {
+	// Exactly at threshold (width = 2 * minColWidth = 120) → two columns.
+	m := gpuModel(2, 2*minColWidth)
+	out := m.renderGpuContent()
+	lines := strings.Split(out, "\n")
+	if len(lines) > panelLines+4 {
+		t.Errorf("width==%d should use two columns, got %d lines", 2*minColWidth, len(lines))
+	}
+}
+
+func TestOneColumnBelowThreshold(t *testing.T) {
+	// One below threshold → single column.
+	m := gpuModel(2, 2*minColWidth-1)
+	out := m.renderGpuContent()
+	lines := strings.Split(out, "\n")
+	minExpected := 2 * (panelLines + 2)
+	if len(lines) < minExpected {
+		t.Errorf("width==%d should use one column (%d+ lines), got %d",
+			2*minColWidth-1, minExpected, len(lines))
 	}
 }
 
