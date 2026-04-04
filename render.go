@@ -234,47 +234,6 @@ func renderMultilineSparkline(history []float64, width, rows int, vmin, vmax flo
 	return result
 }
 
-func renderSparkline(history []float64, width int, vmin, vmax float64, grad gradient, gradScale float64) string {
-	if width <= 0 {
-		return ""
-	}
-
-	needed := width * 2
-	samples := make([]float64, needed)
-	// left-pad with vmin
-	if len(history) >= needed {
-		copy(samples, history[len(history)-needed:])
-	} else {
-		copy(samples[needed-len(history):], history)
-	}
-
-	brailleRunes := []rune(braille)
-	emptyStyle := rgbStyle(35, 35, 35)
-
-	var sb strings.Builder
-	for i := 0; i < width; i++ {
-		vl := samples[i*2]
-		vr := samples[i*2+1]
-
-		ll := normalizeLevel(vl, vmin, vmax)
-		rl := normalizeLevel(vr, vmin, vmax)
-		ch := brailleRunes[ll*5+rl]
-
-		if ll == 0 && rl == 0 {
-			sb.WriteString(emptyStyle.Render("⠀"))
-		} else {
-			avg := (vl + vr) / 2
-			pct := 0.0
-			if gradScale > 0 {
-				pct = avg / gradScale * 100
-			}
-			c := grad[clampIdx(pct)]
-			sb.WriteString(rgbStyle(c[0], c[1], c[2]).Render(string(ch)))
-		}
-	}
-	return sb.String()
-}
-
 // ── Formatting helpers ────────────────────────────────────────────────
 
 func fmtGB(b int64) string {

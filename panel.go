@@ -276,9 +276,3 @@ func fmtWattsOrNA(v float64) string {
 	return fmt.Sprintf("%.0fW", v)
 }
 
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
