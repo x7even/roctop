@@ -712,7 +712,8 @@ func TestParseRASInfoSkipsNonRocm(t *testing.T) {
 	}
 }
 
-func TestRenderMetricLinesECCWarning(t *testing.T) {
+func TestRenderMetricLinesTitleNoECC(t *testing.T) {
+	// ECC warnings belong in the info panel only — metrics title must never show them.
 	gpu := GpuData{
 		CardID:           0,
 		Backend:          "rocm",
@@ -726,27 +727,8 @@ func TestRenderMetricLinesECCWarning(t *testing.T) {
 	hist := &GpuHistory{}
 	lines := renderMetricLines(gpu, hist, 80)
 	title := lines[0]
-	if !strings.Contains(title, "ECC") {
-		t.Errorf("title should contain ECC warning when uncorrectable > 0, got: %s", title)
-	}
-}
-
-func TestRenderMetricLinesNoECCWarningWhenClean(t *testing.T) {
-	gpu := GpuData{
-		CardID:           0,
-		Backend:          "rocm",
-		Name:             "Radeon RX 7900 XTX",
-		GpuUse:           50.0,
-		PowerAvg:         200.0,
-		PowerMax:         355.0,
-		TempJunc:         70.0,
-		RasUncorrectable: 0,
-	}
-	hist := &GpuHistory{}
-	lines := renderMetricLines(gpu, hist, 80)
-	title := lines[0]
 	if strings.Contains(title, "ECC") {
-		t.Errorf("title should not contain ECC when errors are zero, got: %s", title)
+		t.Errorf("metrics title should not show ECC warning (info panel only), got: %s", title)
 	}
 }
 

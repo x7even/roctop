@@ -80,9 +80,6 @@ func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
 		}
 		title += "  " + warnStyle.Render("⚠ THROTTLED: "+reasons)
 	}
-	if gpu.RasUncorrectable > 0 {
-		title += "  " + warnStyle.Render(fmt.Sprintf("⚠ ECC: %d uncorr", gpu.RasUncorrectable))
-	}
 
 	// USE bar + sparkline
 	var useLine string
