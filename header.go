@@ -15,9 +15,10 @@ var (
 	headerKey   = lipgloss.NewStyle().Background(lipgloss.Color("#0d1a2d")).Foreground(lipgloss.Color("#ffd700")).Bold(true)
 	headerPause = lipgloss.NewStyle().Background(lipgloss.Color("#0d1a2d")).Foreground(lipgloss.Color("#ffd700")).Bold(true)
 	headerInfo  = lipgloss.NewStyle().Background(lipgloss.Color("#0d1a2d")).Foreground(lipgloss.Color("#ff00ff")).Bold(true)
+	headerHelp  = lipgloss.NewStyle().Background(lipgloss.Color("#0d1a2d")).Foreground(lipgloss.Color("#00ff87")).Bold(true)
 )
 
-func renderHeader(gpuCount int, refreshSecs float64, paused, infoMode bool, width int) string {
+func renderHeader(gpuCount int, refreshSecs float64, paused, infoMode, helpMode bool, width int) string {
 	var sb strings.Builder
 
 	if paused {
@@ -32,9 +33,12 @@ func renderHeader(gpuCount int, refreshSecs float64, paused, infoMode bool, widt
 		if gpuCount != 1 {
 			sb.WriteString(headerGreen.Render("s"))
 		}
-		if infoMode {
+		switch {
+		case helpMode:
+			sb.WriteString(headerHelp.Render("  HELP"))
+		case infoMode:
 			sb.WriteString(headerInfo.Render("  INFO MODE"))
-		} else {
+		default:
 			sb.WriteString(headerDim.Render(fmt.Sprintf("  refresh %.1fs", refreshSecs)))
 		}
 		sb.WriteString(headerKey.Render("  q"))
@@ -48,7 +52,9 @@ func renderHeader(gpuCount int, refreshSecs float64, paused, infoMode bool, widt
 		sb.WriteString(headerKey.Render("p"))
 		sb.WriteString(headerDim.Render(":pause  "))
 		sb.WriteString(headerKey.Render("i"))
-		sb.WriteString(headerDim.Render(":info"))
+		sb.WriteString(headerDim.Render(":info  "))
+		sb.WriteString(headerKey.Render("?"))
+		sb.WriteString(headerDim.Render(":help"))
 	}
 
 	line := sb.String()
