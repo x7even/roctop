@@ -35,6 +35,8 @@ type model struct {
 	interval      time.Duration
 	paused        bool
 	infoMode      bool
+	helpMode      bool
+	gpuVpOffset   int // saved GPU scroll position while help is open
 	width         int
 	height        int
 	ready         bool
@@ -103,6 +105,18 @@ func tickCmd(interval time.Duration) tea.Cmd {
 	})
 }
 
+// ── Viewport content management ──────────────────────────────────────
+
+// setViewportContent sets the viewport to help or GPU content depending
+// on the current mode, preserving the scroll offset for GPU content.
+func (m *model) setViewportContent() {
+	if m.helpMode {
+		m.vp.SetContent(renderHelp(m.width))
+	} else {
+		m.vp.SetContent(m.renderGpuContent())
+	}
+}
+
 // ── GPU content renderer ──────────────────────────────────────────────
 
 func (m model) getHist(key string) *GpuHistory {
@@ -158,12 +172,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.vpReady {
 			m.vp = viewport.New(m.width, vpH)
 			m.vp.MouseWheelEnabled = true
-			m.vp.SetContent(m.renderGpuContent())
+			m.setViewportContent()
 			m.vpReady = true
 		} else {
 			yOff := m.vp.YOffset
 			m.vp.Width = m.width
 			m.vp.Height = vpH
+			m.setViewportContent()
 			m.vp.SetYOffset(yOff)
 		}
 
@@ -194,7 +209,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.gpus = msg.gpus
 		m.procs = msg.procs
-		if m.vpReady {
+		if m.vpReady && !m.helpMode {
 			yOff := m.vp.YOffset
 			m.vp.SetContent(m.renderGpuContent())
 			m.vp.SetYOffset(yOff)
@@ -214,7 +229,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				carryStaticFields(&sg, &m.gpus[i])
 			}
 		}
-		if m.vpReady {
+		if m.vpReady && !m.helpMode {
 			yOff := m.vp.YOffset
 			m.vp.SetContent(m.renderGpuContent())
 			m.vp.SetYOffset(yOff)
@@ -245,11 +260,34 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "p":
 			m.paused = !m.paused
 		case "i":
-			m.infoMode = !m.infoMode
-			if m.vpReady {
-				yOff := m.vp.YOffset
-				m.vp.SetContent(m.renderGpuContent())
-				m.vp.SetYOffset(yOff)
+			if m.helpMode {
+				m.helpMode = false
+				if m.vpReady {
+					m.setViewportContent()
+					m.vp.SetYOffset(m.gpuVpOffset)
+				}
+			} else {
+				m.infoMode = !m.infoMode
+				if m.vpReady {
+					yOff := m.vp.YOffset
+					m.vp.SetContent(m.renderGpuContent())
+					m.vp.SetYOffset(yOff)
+				}
+			}
+		case "?":
+			if m.helpMode {
+				m.helpMode = false
+				if m.vpReady {
+					m.setViewportContent()
+					m.vp.SetYOffset(m.gpuVpOffset)
+				}
+			} else {
+				m.gpuVpOffset = m.vp.YOffset
+				m.helpMode = true
+				if m.vpReady {
+					m.vp.SetContent(renderHelp(m.width))
+					m.vp.GotoTop()
+				}
 			}
 		default:
 			var cmd tea.Cmd
@@ -272,7 +310,7 @@ func (m model) View() string {
 	}
 
 	intervalSecs := m.interval.Seconds()
-	header := renderHeader(len(m.gpus), intervalSecs, m.paused, m.infoMode, m.width)
+	header := renderHeader(len(m.gpus), intervalSecs, m.paused, m.infoMode, m.helpMode, m.width)
 	proc := renderProcessTable(m.procs, m.width)
 
 	return lipgloss.JoinVertical(lipgloss.Left, header, m.vp.View(), proc)

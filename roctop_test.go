@@ -3,6 +3,7 @@ package main
 import (
 	"math"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -464,6 +465,27 @@ func TestRenderMetricLinesNaNInputs(t *testing.T) {
 	lines := renderMetricLines(gpu, hist, 80)
 	if len(lines) != panelLines {
 		t.Errorf("renderMetricLines (all-NaN) returned %d lines, want %d", len(lines), panelLines)
+	}
+}
+
+// ── renderHelp ───────────────────────────────────────────────────────
+
+func TestRenderHelpContainsKeyDocs(t *testing.T) {
+	out := renderHelp(120)
+	for _, want := range []string{"USE", "VRAM", "MACT", "TEMP", "e XX°", "m XX°", "Sparklines", "?", "Junction"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("renderHelp output missing expected term %q", want)
+		}
+	}
+}
+
+func TestRenderHelpIsScrollable(t *testing.T) {
+	// renderHelp must return more lines than a typical viewport height so
+	// that the viewport has content to scroll.
+	out := renderHelp(120)
+	lines := strings.Split(out, "\n")
+	if len(lines) < 20 {
+		t.Errorf("renderHelp returned only %d lines — unlikely to need scrolling", len(lines))
 	}
 }
 
