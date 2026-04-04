@@ -414,6 +414,57 @@ func TestCollectStaticInfoByIDOnlyRocm(t *testing.T) {
 	}
 }
 
+// ── renderMetricLines output ─────────────────────────────────────────
+
+func TestRenderMetricLinesCount(t *testing.T) {
+	gpu := GpuData{
+		CardID:      0,
+		Backend:     "rocm",
+		Name:        "Radeon RX 7900 XTX",
+		GpuUse:      75.0,
+		MemActivity: 40.0,
+		VramPercent: 50.0,
+		VramTotal:   8 * 1024 * 1024 * 1024,
+		VramUsed:    4 * 1024 * 1024 * 1024,
+		PowerAvg:    200.0,
+		PowerMax:    355.0,
+		TempJunc:    68.0,
+		TempEdge:    62.0,
+		TempMem:     60.0,
+		FanPercent:  45.0,
+		FanRPM:      1800,
+		Sclk:        2500,
+		Mclk:        1000,
+	}
+	hist := &GpuHistory{}
+	lines := renderMetricLines(gpu, hist, 80)
+	if len(lines) != panelLines {
+		t.Errorf("renderMetricLines returned %d lines, want %d (panelLines)", len(lines), panelLines)
+	}
+}
+
+func TestRenderMetricLinesNaNInputs(t *testing.T) {
+	// All-NaN GPU (e.g. a sysfs GPU with no sensors readable) must not panic
+	// and must still return panelLines lines.
+	gpu := GpuData{
+		CardID:      1,
+		Backend:     "sysfs",
+		Name:        "Intel iGPU",
+		GpuUse:      math.NaN(),
+		MemActivity: math.NaN(),
+		PowerAvg:    math.NaN(),
+		PowerMax:    math.NaN(),
+		TempJunc:    math.NaN(),
+		TempEdge:    math.NaN(),
+		TempMem:     math.NaN(),
+	}
+	hist := &GpuHistory{}
+	lines := renderMetricLines(gpu, hist, 80)
+	if len(lines) != panelLines {
+		t.Errorf("renderMetricLines (all-NaN) returned %d lines, want %d", len(lines), panelLines)
+	}
+}
+
 // ── Test helper ─────────────────────────────────────────────────────
 
 func writeTestFile(path, content string) error {

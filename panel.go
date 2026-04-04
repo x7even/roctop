@@ -25,6 +25,8 @@ var panelBorder = lipgloss.NewStyle().
 	PaddingLeft(1).
 	PaddingRight(1)
 
+const panelLines = 15
+
 func renderGpuPanel(gpu GpuData, hist *GpuHistory, width int, infoMode bool) string {
 	// content width = panel width - 2 (border) - 2 (padding)
 	cw := width - 4
@@ -35,7 +37,7 @@ func renderGpuPanel(gpu GpuData, hist *GpuHistory, width int, infoMode bool) str
 	var lines []string
 	if infoMode {
 		lines = renderInfoLines(gpu, cw)
-		for len(lines) < 11 {
+		for len(lines) < panelLines {
 			lines = append(lines, "")
 		}
 	} else {
@@ -78,7 +80,7 @@ func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
 		title += "  " + warnStyle.Render("⚠ THROTTLED: "+reasons)
 	}
 
-	// USE bar
+	// USE bar + sparkline
 	var useLine string
 	var useRows [3]string
 	var useLabel string
@@ -92,9 +94,7 @@ func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
 			renderBar(gpu.GpuUse, 100, bw(pctW), utilGradient) +
 			boldStyle.Render(fmt.Sprintf(" %5.1f%%", gpu.GpuUse))
 		rows := renderMultilineSparkline(hist.GpuUse.Values(), sparkW, 3, 0, 100, utilGradient, 100)
-		useRows[0] = rows[0]
-		useRows[1] = rows[1]
-		useRows[2] = rows[2]
+		copy(useRows[:], rows)
 		useLabel = dimStyle.Render(fmt.Sprintf("%4.0f%% ", gpu.GpuUse))
 	}
 
@@ -105,7 +105,20 @@ func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
 		boldStyle.Render(fmt.Sprintf(" %5.1f%%", gpu.VramPercent)) +
 		dimStyle.Render(gbInfo)
 
-	// PWR bar
+	// MACT bar — memory read/write activity %
+	memAct := gpu.MemActivity
+	if math.IsNaN(memAct) {
+		memAct = 0
+	}
+	mactValStyle := boldStyle
+	if math.IsNaN(gpu.MemActivity) {
+		mactValStyle = noDataStyle
+	}
+	mactLine := labelStyle.Render("MACT ") +
+		renderBar(memAct, 100, bw(pctW), utilGradient) +
+		mactValStyle.Render(fmt.Sprintf(" %5.1f%%", memAct))
+
+	// PWR bar + sparkline
 	var pwrLine string
 	var pwrRows [3]string
 	var pwrLabel string
@@ -129,9 +142,7 @@ func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
 		pwrLabel = noDataStyle.Render(fmt.Sprintf("%4.0fW ", 0.0))
 	} else {
 		rows := renderMultilineSparkline(hist.Power.Values(), sparkW, 3, 0, pwrMax, powerGradient, pwrMax)
-		pwrRows[0] = rows[0]
-		pwrRows[1] = rows[1]
-		pwrRows[2] = rows[2]
+		copy(pwrRows[:], rows)
 		pwrLabel = dimStyle.Render(fmt.Sprintf("%4.0fW ", pwrAvg))
 	}
 
@@ -163,6 +174,27 @@ func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
 			boldStyle.Render(fmtMHz(gpu.Mclk))
 	}
 
+	// TEMP sparkline — label rows show edge and memory temps when available
+	var tempRows [3]string
+	var tempLabel, tempLabel1, tempLabel2 string
+	if !math.IsNaN(gpu.TempJunc) {
+		rows := renderMultilineSparkline(hist.TempJnc.Values(), sparkW, 3, 0, 110, tempGradient, 110)
+		copy(tempRows[:], rows)
+		tempLabel = dimStyle.Render(fmt.Sprintf("%4.0f° ", gpu.TempJunc))
+	} else {
+		tempLabel = blankPfx
+	}
+	if !math.IsNaN(gpu.TempEdge) && gpu.TempEdge > 0 {
+		tempLabel1 = dimStyle.Render(fmt.Sprintf("e%3.0f° ", gpu.TempEdge))
+	} else {
+		tempLabel1 = blankPfx
+	}
+	if !math.IsNaN(gpu.TempMem) && gpu.TempMem > 0 {
+		tempLabel2 = dimStyle.Render(fmt.Sprintf("m%3.0f° ", gpu.TempMem))
+	} else {
+		tempLabel2 = blankPfx
+	}
+
 	return []string{
 		title,
 		useLine,
@@ -170,11 +202,15 @@ func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
 		blankPfx + useRows[1],
 		blankPfx + useRows[2],
 		vramLine,
+		mactLine,
 		pwrLine,
 		pwrLabel + pwrRows[0],
 		blankPfx + pwrRows[1],
 		blankPfx + pwrRows[2],
 		tempLine,
+		tempLabel + tempRows[0],
+		tempLabel1 + tempRows[1],
+		tempLabel2 + tempRows[2],
 	}
 }
 
