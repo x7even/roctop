@@ -109,6 +109,9 @@ type GpuData struct {
 	DriverVersion string
 	PerfLevel     string
 	UniqueID      string
+
+	RasCorrectable   int64
+	RasUncorrectable int64
 }
 
 type ProcessData struct {
@@ -507,6 +510,66 @@ func pcieRootPort(pcieBus string) string {
 	return ""
 }
 
+var reGPURAS = regexp.MustCompile(`^GPU\[(\d+)\]`)
+
+// parseRASInfo parses the text output of "rocm-smi --showrasinfo all" and
+// accumulates correctable and uncorrectable error counts into gpus in-place.
+func parseRASInfo(output string, gpus []GpuData) {
+	byID := make(map[int]int)
+	for i, g := range gpus {
+		if g.Backend == "rocm" {
+			byID[g.CardID] = i
+		}
+	}
+
+	currentIdx := -1
+	for _, line := range strings.Split(output, "\n") {
+		if m := reGPURAS.FindStringSubmatch(strings.TrimSpace(line)); m != nil {
+			id, err := strconv.Atoi(m[1])
+			if err != nil {
+				currentIdx = -1
+				continue
+			}
+			if idx, ok := byID[id]; ok {
+				currentIdx = idx
+			} else {
+				currentIdx = -1
+			}
+			continue
+		}
+		if currentIdx < 0 {
+			continue
+		}
+		// Block data lines look like:
+		//   "  UMC  ENABLED  0  0"  or  "  UMC  DISABLED  3145680  3145680"
+		// DISABLED blocks may still carry error counts.
+		fields := strings.Fields(line)
+		if len(fields) < 4 {
+			continue
+		}
+		corr, err1 := strconv.ParseInt(fields[2], 10, 64)
+		uncorr, err2 := strconv.ParseInt(fields[3], 10, 64)
+		if err1 == nil && err2 == nil {
+			gpus[currentIdx].RasCorrectable += corr
+			gpus[currentIdx].RasUncorrectable += uncorr
+		}
+	}
+}
+
+// collectRASInfo runs "rocm-smi --showrasinfo all" and populates RAS error
+// counts for all ROCm GPUs in the slice.
+func collectRASInfo(gpus []GpuData) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, rocmSMI, "--showrasinfo", "all")
+	out, err := cmd.Output()
+	if err != nil {
+		logf("rocm-smi --showrasinfo all: %v", err)
+		return
+	}
+	parseRASInfo(string(out), gpus)
+}
+
 func collectStaticInfo(gpus []GpuData) {
 	// Key only ROCm GPUs by CardID. The rocm-smi calls below return keys
 	// like "card0"/"card3" which are CardID-only. Other backends can share
@@ -591,6 +654,9 @@ func collectStaticInfo(gpus []GpuData) {
 			gpus[i].DriverVersion = drv
 		}
 	}
+
+	// RAS / ECC error counts
+	collectRASInfo(gpus)
 }
 
 // ── Main collection entry point ──────────────────────────────────────

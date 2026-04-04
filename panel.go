@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -78,6 +79,9 @@ func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
 			reasons = strings.Join(gpu.ThrottleReasons, ", ")
 		}
 		title += "  " + warnStyle.Render("⚠ THROTTLED: "+reasons)
+	}
+	if gpu.RasUncorrectable > 0 {
+		title += "  " + warnStyle.Render(fmt.Sprintf("⚠ ECC: %d uncorr", gpu.RasUncorrectable))
 	}
 
 	// USE bar + sparkline
@@ -294,6 +298,22 @@ func renderInfoLines(gpu GpuData, cw int) []string {
 		throttleLine = kvRow("Throttle", "none", "Voltage", fmt.Sprintf("%.0fmV", gpu.Voltage))
 	}
 
+	// ECC / RAS errors (ROCm only)
+	var eccLine string
+	if gpu.Backend == "rocm" {
+		corrStr := strconv.FormatInt(gpu.RasCorrectable, 10)
+		uncorrStr := strconv.FormatInt(gpu.RasUncorrectable, 10)
+		if gpu.RasUncorrectable > 0 {
+			eccLine = kv("ECC Corr", corrStr) + "  " +
+				labelStyle.Render(fmt.Sprintf("%-10s", "ECC Uncorr:")) +
+				" " + warnStyle.Render(fmt.Sprintf("%-*s", colW, "⚠ "+uncorrStr))
+		} else {
+			eccLine = kvRow("ECC Corr", corrStr, "ECC Uncorr", uncorrStr)
+		}
+	} else {
+		eccLine = kvRow("ECC Corr", "", "ECC Uncorr", "")
+	}
+
 	return []string{
 		title,
 		kvRow("Vendor", vendor, "GFX", gpu.GfxVersion),
@@ -302,6 +322,7 @@ func renderInfoLines(gpu GpuData, cw int) []string {
 		kvRow("Driver", gpu.DriverVersion, "Perf", perfLevel),
 		throttleLine,
 		kvRow("Unique ID", gpu.UniqueID, "SKU", gpu.SKU),
+		eccLine,
 	}
 }
 
