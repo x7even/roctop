@@ -349,11 +349,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "esc":
-			if m.focusIdx >= 0 {
-				m.focusIdx = -1
-				if m.vpReady {
-					m.setViewportContent()
-				}
+			// Always return to the normal multi-GPU metrics screen.
+			m.focusIdx = -1
+			m.helpMode = false
+			m.logMode = false
+			m.infoMode = false
+			if m.vpReady {
+				m.setViewportContent()
+				m.vp.SetYOffset(m.gpuVpOffset)
 			}
 		case "left":
 			if m.focusIdx >= 0 && len(m.gpus) > 0 {

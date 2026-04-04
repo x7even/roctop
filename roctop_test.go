@@ -848,6 +848,42 @@ func TestNoFocusModeHeaderNoIndicator(t *testing.T) {
 	}
 }
 
+func TestEscClearsAllModes(t *testing.T) {
+	m := gpuModel(4, 200)
+	m.focusIdx = 2
+	m.helpMode = true
+	m.logMode = false
+	m.infoMode = true
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	nm := updated.(model)
+
+	if nm.focusIdx != -1 {
+		t.Errorf("Esc should clear focusIdx, got %d", nm.focusIdx)
+	}
+	if nm.helpMode {
+		t.Error("Esc should clear helpMode")
+	}
+	if nm.infoMode {
+		t.Error("Esc should clear infoMode")
+	}
+}
+
+func TestEscFromLogMode(t *testing.T) {
+	m := gpuModel(4, 200)
+	m.logMode = true
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	nm := updated.(model)
+
+	if nm.logMode {
+		t.Error("Esc should clear logMode")
+	}
+	if nm.focusIdx != -1 {
+		t.Errorf("Esc should leave focusIdx at -1, got %d", nm.focusIdx)
+	}
+}
+
 // ── adaptive layout ──────────────────────────────────────────────────
 
 func gpuModel(gpuCount, width int) model {
