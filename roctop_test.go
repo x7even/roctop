@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 // ── Parsing helpers ─────────────────────────────────────────────────
@@ -766,6 +768,56 @@ func TestFocusModeShowsSingleGPU(t *testing.T) {
 	// The focused GPU's name should appear.
 	if !strings.Contains(out, "GPU 2") {
 		t.Errorf("focus mode should show GPU 2, got:\n%s", out)
+	}
+}
+
+func TestFocusModeArrowRight(t *testing.T) {
+	m := gpuModel(4, 200)
+	m.focusIdx = 1
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	nm := updated.(model)
+	if nm.focusIdx != 2 {
+		t.Errorf("right arrow should advance focusIdx to 2, got %d", nm.focusIdx)
+	}
+}
+
+func TestFocusModeArrowLeft(t *testing.T) {
+	m := gpuModel(4, 200)
+	m.focusIdx = 1
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	nm := updated.(model)
+	if nm.focusIdx != 0 {
+		t.Errorf("left arrow should move focusIdx to 0, got %d", nm.focusIdx)
+	}
+}
+
+func TestFocusModeArrowWrapsRight(t *testing.T) {
+	m := gpuModel(4, 200)
+	m.focusIdx = 3
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	nm := updated.(model)
+	if nm.focusIdx != 0 {
+		t.Errorf("right arrow at last GPU should wrap to 0, got %d", nm.focusIdx)
+	}
+}
+
+func TestFocusModeArrowWrapsLeft(t *testing.T) {
+	m := gpuModel(4, 200)
+	m.focusIdx = 0
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	nm := updated.(model)
+	if nm.focusIdx != 3 {
+		t.Errorf("left arrow at first GPU should wrap to 3, got %d", nm.focusIdx)
+	}
+}
+
+func TestArrowNoEffectOutsideFocus(t *testing.T) {
+	m := gpuModel(4, 200)
+	m.focusIdx = -1
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	nm := updated.(model)
+	if nm.focusIdx != -1 {
+		t.Errorf("right arrow outside focus should not change focusIdx, got %d", nm.focusIdx)
 	}
 }
 

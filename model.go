@@ -355,6 +355,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.setViewportContent()
 				}
 			}
+		case "left":
+			if m.focusIdx >= 0 && len(m.gpus) > 0 {
+				m.focusIdx = (m.focusIdx - 1 + len(m.gpus)) % len(m.gpus)
+				if m.vpReady {
+					m.setViewportContent()
+					m.vp.GotoTop()
+				}
+			}
+		case "right":
+			if m.focusIdx >= 0 && len(m.gpus) > 0 {
+				m.focusIdx = (m.focusIdx + 1) % len(m.gpus)
+				if m.vpReady {
+					m.setViewportContent()
+					m.vp.GotoTop()
+				}
+			}
 		case "0", "1", "2", "3", "4", "5", "6", "7", "8", "9":
 			idx, _ := strconv.Atoi(msg.String())
 			if idx < len(m.gpus) {
