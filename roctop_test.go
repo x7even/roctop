@@ -621,6 +621,154 @@ func TestRenderHelpIsScrollable(t *testing.T) {
 	}
 }
 
+// ── RAS / ECC parsing ────────────────────────────────────────────────
+
+const rasInfoSample = `
+============================ ROCm System Management Interface ============================
+======================================== RAS Info ========================================
+
+GPU[0]: 	RAS INFO
+         Block       Status    Correctable Error  Uncorrectable Error
+           UMC        ENABLED                  0                    0
+          SDMA       DISABLED
+           GFX       DISABLED
+            DF        ENABLED                  5                    2
+__________________________________________________________________________________________
+
+GPU[1]: 	RAS INFO
+         Block       Status    Correctable Error  Uncorrectable Error
+           UMC       DISABLED            3145680              3145680
+          SDMA       DISABLED
+           GFX       DISABLED
+__________________________________________________________________________________________
+
+GPU[2]: 	RAS INFO
+         Block       Status    Correctable Error  Uncorrectable Error
+           UMC        ENABLED                  0                    0
+__________________________________________________________________________________________
+==========================================================================================
+`
+
+func TestParseRASInfoCleanGPU(t *testing.T) {
+	gpus := []GpuData{
+		{CardID: 0, Backend: "rocm"},
+		{CardID: 1, Backend: "rocm"},
+		{CardID: 2, Backend: "rocm"},
+	}
+	parseRASInfo(rasInfoSample, gpus)
+
+	// GPU 0 has UMC (0,0) + DF (5,2)
+	if gpus[0].RasCorrectable != 5 {
+		t.Errorf("GPU[0] RasCorrectable = %d, want 5", gpus[0].RasCorrectable)
+	}
+	if gpus[0].RasUncorrectable != 2 {
+		t.Errorf("GPU[0] RasUncorrectable = %d, want 2", gpus[0].RasUncorrectable)
+	}
+}
+
+func TestParseRASInfoErrorGPU(t *testing.T) {
+	gpus := []GpuData{
+		{CardID: 0, Backend: "rocm"},
+		{CardID: 1, Backend: "rocm"},
+		{CardID: 2, Backend: "rocm"},
+	}
+	parseRASInfo(rasInfoSample, gpus)
+
+	// GPU 1 has UMC DISABLED with 3145680 each
+	if gpus[1].RasCorrectable != 3145680 {
+		t.Errorf("GPU[1] RasCorrectable = %d, want 3145680", gpus[1].RasCorrectable)
+	}
+	if gpus[1].RasUncorrectable != 3145680 {
+		t.Errorf("GPU[1] RasUncorrectable = %d, want 3145680", gpus[1].RasUncorrectable)
+	}
+}
+
+func TestParseRASInfoCleanZeros(t *testing.T) {
+	gpus := []GpuData{
+		{CardID: 0, Backend: "rocm"},
+		{CardID: 1, Backend: "rocm"},
+		{CardID: 2, Backend: "rocm"},
+	}
+	parseRASInfo(rasInfoSample, gpus)
+
+	// GPU 2 has UMC (0,0) only
+	if gpus[2].RasCorrectable != 0 || gpus[2].RasUncorrectable != 0 {
+		t.Errorf("GPU[2] should have zero errors, got corr=%d uncorr=%d",
+			gpus[2].RasCorrectable, gpus[2].RasUncorrectable)
+	}
+}
+
+func TestParseRASInfoSkipsNonRocm(t *testing.T) {
+	// Non-rocm GPUs sharing a CardID should not be populated.
+	gpus := []GpuData{
+		{CardID: 0, Backend: "rocm"},
+		{CardID: 0, Backend: "sysfs"}, // same CardID as rocm:0
+	}
+	parseRASInfo(rasInfoSample, gpus)
+
+	if gpus[1].RasCorrectable != 0 || gpus[1].RasUncorrectable != 0 {
+		t.Error("sysfs GPU should not have RAS data written into it")
+	}
+}
+
+func TestRenderMetricLinesECCWarning(t *testing.T) {
+	gpu := GpuData{
+		CardID:           0,
+		Backend:          "rocm",
+		Name:             "Radeon RX 7900 XTX",
+		GpuUse:           50.0,
+		PowerAvg:         200.0,
+		PowerMax:         355.0,
+		TempJunc:         70.0,
+		RasUncorrectable: 3145680,
+	}
+	hist := &GpuHistory{}
+	lines := renderMetricLines(gpu, hist, 80)
+	title := lines[0]
+	if !strings.Contains(title, "ECC") {
+		t.Errorf("title should contain ECC warning when uncorrectable > 0, got: %s", title)
+	}
+}
+
+func TestRenderMetricLinesNoECCWarningWhenClean(t *testing.T) {
+	gpu := GpuData{
+		CardID:           0,
+		Backend:          "rocm",
+		Name:             "Radeon RX 7900 XTX",
+		GpuUse:           50.0,
+		PowerAvg:         200.0,
+		PowerMax:         355.0,
+		TempJunc:         70.0,
+		RasUncorrectable: 0,
+	}
+	hist := &GpuHistory{}
+	lines := renderMetricLines(gpu, hist, 80)
+	title := lines[0]
+	if strings.Contains(title, "ECC") {
+		t.Errorf("title should not contain ECC when errors are zero, got: %s", title)
+	}
+}
+
+func TestRenderInfoLinesECCRow(t *testing.T) {
+	gpu := GpuData{
+		CardID:           0,
+		Backend:          "rocm",
+		Name:             "Radeon RX 7900 XTX",
+		PowerMax:         355.0,
+		RasCorrectable:   10,
+		RasUncorrectable: 3145680,
+	}
+	lines := renderInfoLines(gpu, 80)
+	// Join all lines to search for ECC content
+	out := strings.Join(lines, "\n")
+	if !strings.Contains(out, "ECC") {
+		t.Error("info view should contain ECC row for rocm GPU")
+	}
+	if !strings.Contains(out, "3145680") {
+		t.Error("info view should show uncorrectable error count")
+	}
+}
+
 // ── Test helper ─────────────────────────────────────────────────────
 
 func writeTestFile(path, content string) error {
