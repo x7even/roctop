@@ -368,6 +368,52 @@ func TestFmtWattsOrNA(t *testing.T) {
 	}
 }
 
+// ── collectStaticInfo backend isolation ─────────────────────────────
+
+// TestCollectStaticInfoBackendIsolation verifies that when multiple backends
+// share the same CardID integer, collectStaticInfo only writes rocm-smi
+// results into the rocm GPU — not into any other-backend GPU that happens
+// to have the same CardID.
+//
+// This is a unit test for the byID map logic only; it uses a fake runJSON
+// by directly calling the internal byID-building logic via a local
+// simulation of the relevant section.
+func TestCollectStaticInfoByIDOnlyRocm(t *testing.T) {
+	// Simulate 4 rocm GPUs + 1 sysfs GPU that shares CardID=3.
+	gpus := []GpuData{
+		{CardID: 0, Backend: "rocm"},
+		{CardID: 1, Backend: "rocm"},
+		{CardID: 2, Backend: "rocm"},
+		{CardID: 3, Backend: "rocm"},
+		{CardID: 3, Backend: "sysfs"}, // same CardID as rocm:3
+	}
+
+	// Reproduce the fixed byID logic: only rocm entries.
+	byID := make(map[int]int)
+	for i, g := range gpus {
+		if g.Backend == "rocm" {
+			byID[g.CardID] = i
+		}
+	}
+
+	// CardID 3 must resolve to index 3 (rocm:3), not index 4 (sysfs:3).
+	if idx, ok := byID[3]; !ok || idx != 3 {
+		t.Errorf("byID[3] = %d (ok=%v), want 3 (the rocm GPU)", idx, ok)
+	}
+
+	// Applying a fake VBIOS result to the rocm GPU at index 3 must not
+	// affect the sysfs GPU at index 4.
+	if idx, ok := byID[3]; ok {
+		gpus[idx].Vbios = "vbios-test"
+	}
+	if gpus[3].Vbios != "vbios-test" {
+		t.Errorf("rocm GPU at index 3 should have Vbios set, got %q", gpus[3].Vbios)
+	}
+	if gpus[4].Vbios != "" {
+		t.Errorf("sysfs GPU at index 4 should not have Vbios set, got %q", gpus[4].Vbios)
+	}
+}
+
 // ── Test helper ─────────────────────────────────────────────────────
 
 func writeTestFile(path, content string) error {

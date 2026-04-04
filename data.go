@@ -498,9 +498,15 @@ func pcieRootPort(pcieBus string) string {
 }
 
 func collectStaticInfo(gpus []GpuData) {
+	// Key only ROCm GPUs by CardID. The rocm-smi calls below return keys
+	// like "card0"/"card3" which are CardID-only. Other backends can share
+	// the same CardID integers, so mixing them here would cause the wrong
+	// GPU struct to be populated.
 	byID := make(map[int]int)
 	for i, g := range gpus {
-		byID[g.CardID] = i
+		if g.Backend == "rocm" {
+			byID[g.CardID] = i
+		}
 	}
 
 	// VBIOS
