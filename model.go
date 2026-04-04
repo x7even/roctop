@@ -28,17 +28,18 @@ type dataMsg struct {
 }
 
 type model struct {
-	gpus      []GpuData
-	procs     []ProcessData
-	histories map[int]*GpuHistory
-	interval  time.Duration
-	paused    bool
-	infoMode  bool
-	width     int
-	height    int
-	ready     bool
-	vp        viewport.Model
-	vpReady   bool
+	gpus          []GpuData
+	procs         []ProcessData
+	histories     map[int]*GpuHistory
+	interval      time.Duration
+	paused        bool
+	infoMode      bool
+	width         int
+	height        int
+	ready         bool
+	vp            viewport.Model
+	vpReady       bool
+	staticFetched bool
 }
 
 func newModel(interval time.Duration) model {
@@ -79,9 +80,20 @@ func carryStaticFields(from, to *GpuData) {
 
 // ── Tea commands ──────────────────────────────────────────────────────
 
+type staticInfoMsg []GpuData
+
 func fetchDataCmd() tea.Msg {
 	gpus, procs := collectGpuData()
 	return dataMsg{gpus: gpus, procs: procs}
+}
+
+func fetchStaticInfoCmd(gpus []GpuData) tea.Cmd {
+	snapshot := make([]GpuData, len(gpus))
+	copy(snapshot, gpus)
+	return func() tea.Msg {
+		collectStaticInfo(snapshot)
+		return staticInfoMsg(snapshot)
+	}
 }
 
 func tickCmd(interval time.Duration) tea.Cmd {
@@ -174,6 +186,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.gpus = msg.gpus
 		m.procs = msg.procs
+		if m.vpReady {
+			yOff := m.vp.YOffset
+			m.vp.SetContent(m.renderGpuContent())
+			m.vp.SetYOffset(yOff)
+		}
+		if !m.staticFetched && len(m.gpus) > 0 {
+			m.staticFetched = true
+			return m, fetchStaticInfoCmd(m.gpus)
+		}
+
+	case staticInfoMsg:
+		byID := make(map[int]GpuData)
+		for _, g := range []GpuData(msg) {
+			byID[g.CardID] = g
+		}
+		for i := range m.gpus {
+			if sg, ok := byID[m.gpus[i].CardID]; ok {
+				carryStaticFields(&sg, &m.gpus[i])
+			}
+		}
 		if m.vpReady {
 			yOff := m.vp.YOffset
 			m.vp.SetContent(m.renderGpuContent())

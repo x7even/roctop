@@ -213,9 +213,3 @@ func renderInfoLines(gpu GpuData, cw int) []string {
 	}
 }
 
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
