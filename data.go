@@ -206,16 +206,17 @@ func mergeProcesses(procs []ProcessData) []ProcessData {
 	return result
 }
 
-// normalizePCI extracts the BB:DD.F portion for reliable comparison.
+// normalizePCI extracts and lowercases the DDDD:BB:DD.F portion for
+// reliable comparison. rocm-smi returns uppercase hex (e.g. "0000:C3:00.0")
+// while sysfs uevent uses lowercase, so case folding is required.
 func normalizePCI(addr string) string {
 	addr = strings.TrimSpace(addr)
 	if addr == "" {
 		return ""
 	}
-	// Find last occurrence of DDDD:BB:DD.F or BB:DD.F pattern
 	m := reBDF.FindString(addr)
 	if m != "" {
-		return m
+		return strings.ToLower(m)
 	}
 	return ""
 }
