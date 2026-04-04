@@ -388,4 +388,3 @@ func fmtBandwidth(mbps float64) string {
 	}
 	return fmt.Sprintf("%.1f MB/s", mbps)
 }
-
