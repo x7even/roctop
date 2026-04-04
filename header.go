@@ -16,9 +16,10 @@ var (
 	headerPause = lipgloss.NewStyle().Background(lipgloss.Color("#0d1a2d")).Foreground(lipgloss.Color("#ffd700")).Bold(true)
 	headerInfo  = lipgloss.NewStyle().Background(lipgloss.Color("#0d1a2d")).Foreground(lipgloss.Color("#ff00ff")).Bold(true)
 	headerHelp  = lipgloss.NewStyle().Background(lipgloss.Color("#0d1a2d")).Foreground(lipgloss.Color("#00ff87")).Bold(true)
+	headerStale = lipgloss.NewStyle().Background(lipgloss.Color("#0d1a2d")).Foreground(lipgloss.Color("#ff8700")).Bold(true)
 )
 
-func renderHeader(gpuCount int, refreshSecs float64, paused, infoMode, helpMode bool, width int) string {
+func renderHeader(gpuCount int, refreshSecs float64, paused, infoMode, helpMode, dataStale bool, width int) string {
 	var sb strings.Builder
 
 	if paused {
@@ -40,6 +41,9 @@ func renderHeader(gpuCount int, refreshSecs float64, paused, infoMode, helpMode 
 			sb.WriteString(headerInfo.Render("  INFO MODE"))
 		default:
 			sb.WriteString(headerDim.Render(fmt.Sprintf("  refresh %.1fs", refreshSecs)))
+		}
+		if dataStale {
+			sb.WriteString(headerStale.Render("  ⚠ STALE DATA"))
 		}
 		sb.WriteString(headerKey.Render("  q"))
 		sb.WriteString(headerDim.Render(":quit  "))

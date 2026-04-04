@@ -44,6 +44,7 @@ func renderHelp(width int) string {
 		col("CLK", "Current GPU core clock speed"),
 		col("MEM", "Current memory bus clock speed"),
 		col("⚠ THROTTLED", "GPU is power- or thermally-throttling; reason(s) shown"),
+		col("⚠ STALE DATA", "Last data fetch failed — values shown are from the previous cycle"),
 		"",
 		helpSectionStyle.Render("── Sparklines ────────────────────────────────────────────────"),
 		helpTextStyle.Render("Braille-dot graphs show the last ~" + fmt.Sprintf("%d", maxHistory/2) + "s of history for USE,"),

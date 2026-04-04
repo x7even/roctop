@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 // ── Parsing helpers ─────────────────────────────────────────────────
@@ -465,6 +466,56 @@ func TestRenderMetricLinesNaNInputs(t *testing.T) {
 	lines := renderMetricLines(gpu, hist, 80)
 	if len(lines) != panelLines {
 		t.Errorf("renderMetricLines (all-NaN) returned %d lines, want %d", len(lines), panelLines)
+	}
+}
+
+// ── stale data indicator ─────────────────────────────────────────────
+
+func TestHeaderStaleIndicator(t *testing.T) {
+	// Stale flag should appear in the header when dataStale is true.
+	withStale := renderHeader(4, 2.0, false, false, false, true, 200)
+	if !strings.Contains(withStale, "STALE") {
+		t.Error("header with dataStale=true should contain 'STALE'")
+	}
+	// No stale indicator when data is fresh.
+	withoutStale := renderHeader(4, 2.0, false, false, false, false, 200)
+	if strings.Contains(withoutStale, "STALE") {
+		t.Error("header with dataStale=false should not contain 'STALE'")
+	}
+}
+
+func TestDataMsgEmptyPreservesGpus(t *testing.T) {
+	// An empty dataMsg (failed fetch) must not clear existing GPU data.
+	m := newModel(2 * time.Second)
+	m.gpus = []GpuData{{CardID: 0, Backend: "rocm", Name: "Test GPU"}}
+
+	// Simulate a failed fetch arriving as an empty dataMsg.
+	updated, _ := m.Update(dataMsg{gpus: nil, procs: nil})
+	nm := updated.(model)
+
+	if len(nm.gpus) == 0 {
+		t.Error("failed fetch (empty dataMsg) must not clear existing GPU data")
+	}
+	if !nm.dataStale {
+		t.Error("failed fetch must set dataStale=true")
+	}
+}
+
+func TestDataMsgSuccessClearsStale(t *testing.T) {
+	// A successful fetch must clear the stale flag.
+	m := newModel(2 * time.Second)
+	m.dataStale = true
+	m.gpus = []GpuData{{CardID: 0, Backend: "rocm", Name: "Old GPU"}}
+
+	fresh := []GpuData{{CardID: 0, Backend: "rocm", Name: "Fresh GPU"}}
+	updated, _ := m.Update(dataMsg{gpus: fresh, procs: nil})
+	nm := updated.(model)
+
+	if nm.dataStale {
+		t.Error("successful fetch must clear dataStale")
+	}
+	if nm.gpus[0].Name != "Fresh GPU" {
+		t.Errorf("gpus not updated: got %q", nm.gpus[0].Name)
 	}
 }
 
