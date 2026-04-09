@@ -259,7 +259,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					carryStaticFields(&prev, gpu)
 				}
 
-				// PCIe bandwidth: diff raw byte counters to compute MB/s rates.
+				// PCIe bandwidth rate computation — three-source priority.
+				//
+				// Priority 1: rocm-smi cumulative counters (needs delta).
 				if gpu.PcieTxBytes >= 0 && elapsed > 0 {
 					if prev, ok := m.pciePrev[key]; ok {
 						txDelta := gpu.PcieTxBytes - prev[0]
@@ -271,6 +273,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					m.pciePrev[key] = [2]int64{gpu.PcieTxBytes, gpu.PcieRxBytes}
 				}
+				// Priority 2: pcie_bw sysfs (kernel resets on each read; already a
+				// per-interval delta — divide by elapsed for MB/s).
+				if math.IsNaN(gpu.PcieTxMBps) && gpu.PcieBwTxDelta >= 0 && elapsed > 0 {
+					gpu.PcieTxMBps = float64(gpu.PcieBwTxDelta) / elapsed / 1_000_000
+					gpu.PcieRxMBps = float64(gpu.PcieBwRxDelta) / elapsed / 1_000_000
+				}
+				// Priority 3: gpu_metrics combined rate — already set as PcieTxMBps
+				// by the sysfs backend; PcieRxMBps stays NaN → panel shows "BW".
 				// Push computed rates (or sysfs combined value) to history.
 				if !math.IsNaN(gpu.PcieTxMBps) {
 					h.PcieTx.Push(gpu.PcieTxMBps)

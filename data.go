@@ -114,12 +114,16 @@ type GpuData struct {
 	RasCorrectable   int64
 	RasUncorrectable int64
 
-	// PCIe bandwidth. Primary source: rocm-smi --showbw (TX/RX split).
-	// Fallback: gpu_metrics binary (combined only, set in sysfs backend).
-	PcieTxBytes int64   // raw bytes-sent counter from rocm-smi; -1 = unavailable
-	PcieRxBytes int64   // raw bytes-received counter; -1 = unavailable
-	PcieTxMBps  float64 // computed TX rate MB/s (NaN = unavailable; combined if PcieRxMBps is NaN)
-	PcieRxMBps  float64 // computed RX rate MB/s (NaN = unavailable)
+	// PCIe bandwidth — three source priority:
+	//  1. rocm-smi --showbw: cumulative byte counters (TX/RX split); model diffs them.
+	//  2. pcie_bw sysfs:     per-read byte deltas (TX/RX split); kernel resets on each read.
+	//  3. gpu_metrics v1.4+: instantaneous combined rate; set directly as PcieTxMBps.
+	PcieTxBytes   int64   // rocm-smi cumulative bytes sent; -1 = unavailable
+	PcieRxBytes   int64   // rocm-smi cumulative bytes received; -1 = unavailable
+	PcieBwTxDelta int64   // pcie_bw TX byte delta since last read; -1 = unavailable
+	PcieBwRxDelta int64   // pcie_bw RX byte delta since last read; -1 = unavailable
+	PcieTxMBps    float64 // final TX rate MB/s (NaN = unavailable; combined when PcieRxMBps NaN)
+	PcieRxMBps    float64 // final RX rate MB/s (NaN = unavailable)
 }
 
 type ProcessData struct {
@@ -323,12 +327,14 @@ func runJSON(extraFlags ...string) map[string]interface{} {
 
 func parseGPU(cardID int, d map[string]interface{}) GpuData {
 	gpu := GpuData{
-		CardID:      cardID,
-		PowerMax:    300.0,
-		PcieTxBytes: -1,
-		PcieRxBytes: -1,
-		PcieTxMBps:  math.NaN(),
-		PcieRxMBps:  math.NaN(),
+		CardID:        cardID,
+		PowerMax:      300.0,
+		PcieTxBytes:   -1,
+		PcieRxBytes:   -1,
+		PcieBwTxDelta: -1,
+		PcieBwRxDelta: -1,
+		PcieTxMBps:    math.NaN(),
+		PcieRxMBps:    math.NaN(),
 	}
 
 	series := getString(d, "Card Series")
@@ -563,6 +569,17 @@ func applyBandwidth(gpus []GpuData) {
 		if tx >= 0 {
 			gpus[idx].PcieTxBytes = tx
 			gpus[idx].PcieRxBytes = rx
+		}
+	}
+
+	// Fallback to the kernel pcie_bw sysfs file for GPUs where rocm-smi
+	// --showbw is unsupported. The file exposes packet counts since the last
+	// read; multiplying by max-payload-size gives byte deltas.
+	for i := range gpus {
+		if gpus[i].PcieTxBytes < 0 && gpus[i].PcieBus != "" {
+			rx, tx := readPcieBwFile(gpus[i].PcieBus)
+			gpus[i].PcieBwRxDelta = rx
+			gpus[i].PcieBwTxDelta = tx
 		}
 	}
 }

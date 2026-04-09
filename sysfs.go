@@ -186,11 +186,18 @@ func (s *sysfsBackend) CollectData() ([]GpuData, []ProcessData) {
 			gpu.PowerMax = math.NaN()
 		}
 
-		// PCIe bandwidth fallback via gpu_metrics binary (AMD discrete, v1.4+).
-		// Combined TX+RX rate; RX stays NaN so the panel labels it as "BW".
+		// PCIe bandwidth for the sysfs backend (AMD cards only).
+		// Priority 1: pcie_bw sysfs — TX/RX split, available on GCN-era discrete GPUs.
+		// Priority 2: gpu_metrics binary v1.4+ — combined rate, RDNA3+ discrete GPUs.
+		// Integrated/APU hardware typically has neither.
+		gpu.PcieBwTxDelta = -1
+		gpu.PcieBwRxDelta = -1
 		if card.vendor == "AMD" {
-			if bw := readGpuMetricsBandwidth(card.deviceDir); !math.IsNaN(bw) {
-				gpu.PcieTxMBps = bw
+			if rx, tx := readPcieBwFile(card.pciBus); rx >= 0 {
+				gpu.PcieBwRxDelta = rx
+				gpu.PcieBwTxDelta = tx
+			} else if bw := readGpuMetricsBandwidth(card.deviceDir); !math.IsNaN(bw) {
+				gpu.PcieTxMBps = bw // combined; PcieRxMBps stays NaN → panel shows "BW"
 			}
 		}
 
@@ -198,6 +205,42 @@ func (s *sysfsBackend) CollectData() ([]GpuData, []ProcessData) {
 	}
 
 	return gpus, nil
+}
+
+// ── pcie_bw sysfs ──────────────────────────────────────────────────
+//
+// The kernel amdgpu driver exposes /sys/bus/pci/devices/<PCI>/pcie_bw for
+// GPUs whose ASIC implements hardware PCIe packet counters (GCN1–GCN5 era).
+// Each read returns three space-separated fields:
+//
+//   <rx_packets> <tx_packets> <max_payload_size_bytes>
+//
+// The kernel resets its internal counters on every read, so consecutive reads
+// yield packet counts for the interval between them — not cumulative totals.
+// Converting to bytes: packets × max_payload_size. The caller divides by the
+// elapsed interval to obtain a rate.
+//
+// Returns (-1, -1) when the file is absent, unreadable, or malformed.
+
+func readPcieBwFile(pciBus string) (rx, tx int64) {
+	if pciBus == "" {
+		return -1, -1
+	}
+	raw := readStringFile("/sys/bus/pci/devices/" + pciBus + "/pcie_bw")
+	if raw == "" {
+		return -1, -1
+	}
+	parts := strings.Fields(raw)
+	if len(parts) != 3 {
+		return -1, -1
+	}
+	rxPkt, err1 := strconv.ParseUint(parts[0], 10, 64)
+	txPkt, err2 := strconv.ParseUint(parts[1], 10, 64)
+	mps, err3 := strconv.ParseInt(parts[2], 10, 64)
+	if err1 != nil || err2 != nil || err3 != nil || mps <= 0 {
+		return -1, -1
+	}
+	return int64(rxPkt) * mps, int64(txPkt) * mps
 }
 
 // ── gpu_metrics PCIe bandwidth ──────────────────────────────────────
