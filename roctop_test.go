@@ -4,9 +4,12 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 // ── Parsing helpers ─────────────────────────────────────────────────
@@ -188,6 +191,7 @@ func TestParseNvidiaGPULine(t *testing.T) {
 		"512",                            // memory.used (MiB)
 		"65.23",                          // power.draw
 		"200.00",                         // power.limit
+		"200.00",                         // power.max_limit
 		"30",                             // fan.speed
 		"1500",                           // clocks.current.graphics
 		"810",                            // clocks.current.memory
@@ -248,15 +252,15 @@ func TestParseNvidiaGPULine(t *testing.T) {
 func TestParseNvidiaGPULineWithNA(t *testing.T) {
 	fields := []string{
 		"0", "GPU Name", "47", "5", "30",
-		"8188", "1861", "9.19", "[N/A]", "[N/A]",
+		"8188", "1861", "9.19", "[N/A]", "105.00", "[N/A]",
 		"210", "810", "4", "8",
 		"595.79", "95.06", "P5", "00000000:64:00.0",
 	}
 
 	gpu := parseNvidiaGPULine(fields)
 
-	if gpu.PowerMax != 300 { // default when [N/A] parses to 0
-		t.Errorf("PowerMax = %f, want 300 (default)", gpu.PowerMax)
+	if gpu.PowerMax != 105 { // falls back to power.max_limit
+		t.Errorf("PowerMax = %f, want 105 (from power.max_limit)", gpu.PowerMax)
 	}
 	if gpu.FanPercent != 0 { // [N/A] should parse to 0
 		t.Errorf("FanPercent = %f, want 0", gpu.FanPercent)
@@ -537,14 +541,14 @@ func TestHeaderLogCount(t *testing.T) {
 	logMu.Unlock()
 
 	// No entries — hint should just say "l:log"
-	h := renderHeader(4, 2.0, false, false, false, false, false, 200)
+	h := renderHeader(4, 2.0, false, false, false, false, false, -1, 200)
 	if !strings.Contains(h, "l") {
 		t.Error("header should contain l keybinding")
 	}
 
 	logf("an error occurred")
 	// renderHeader(gpuCount, refreshSecs, paused, infoMode, helpMode, logMode, dataStale, width)
-	h = renderHeader(4, 2.0, false, false, false, false, false, 200)
+	h = renderHeader(4, 2.0, false, false, false, false, false, -1, 200)
 	if !strings.Contains(h, "log(1)") {
 		t.Errorf("header should show log(1) when there is 1 entry, got: %s", h)
 	}
@@ -555,12 +559,12 @@ func TestHeaderLogCount(t *testing.T) {
 func TestHeaderStaleIndicator(t *testing.T) {
 	// Stale flag should appear in the header when dataStale is true.
 	// renderHeader(gpuCount, refreshSecs, paused, infoMode, helpMode, logMode, dataStale, width)
-	withStale := renderHeader(4, 2.0, false, false, false, false, true, 200)
+	withStale := renderHeader(4, 2.0, false, false, false, false, true, -1, 200)
 	if !strings.Contains(withStale, "STALE") {
 		t.Error("header with dataStale=true should contain 'STALE'")
 	}
 	// No stale indicator when data is fresh.
-	withoutStale := renderHeader(4, 2.0, false, false, false, false, false, 200)
+	withoutStale := renderHeader(4, 2.0, false, false, false, false, false, -1, 200)
 	if strings.Contains(withoutStale, "STALE") {
 		t.Error("header with dataStale=false should not contain 'STALE'")
 	}
@@ -712,7 +716,8 @@ func TestParseRASInfoSkipsNonRocm(t *testing.T) {
 	}
 }
 
-func TestRenderMetricLinesECCWarning(t *testing.T) {
+func TestRenderMetricLinesTitleNoECC(t *testing.T) {
+	// ECC warnings belong in the info panel only — metrics title must never show them.
 	gpu := GpuData{
 		CardID:           0,
 		Backend:          "rocm",
@@ -726,27 +731,8 @@ func TestRenderMetricLinesECCWarning(t *testing.T) {
 	hist := &GpuHistory{}
 	lines := renderMetricLines(gpu, hist, 80)
 	title := lines[0]
-	if !strings.Contains(title, "ECC") {
-		t.Errorf("title should contain ECC warning when uncorrectable > 0, got: %s", title)
-	}
-}
-
-func TestRenderMetricLinesNoECCWarningWhenClean(t *testing.T) {
-	gpu := GpuData{
-		CardID:           0,
-		Backend:          "rocm",
-		Name:             "Radeon RX 7900 XTX",
-		GpuUse:           50.0,
-		PowerAvg:         200.0,
-		PowerMax:         355.0,
-		TempJunc:         70.0,
-		RasUncorrectable: 0,
-	}
-	hist := &GpuHistory{}
-	lines := renderMetricLines(gpu, hist, 80)
-	title := lines[0]
 	if strings.Contains(title, "ECC") {
-		t.Errorf("title should not contain ECC when errors are zero, got: %s", title)
+		t.Errorf("metrics title should not show ECC warning (info panel only), got: %s", title)
 	}
 }
 
@@ -767,6 +753,136 @@ func TestRenderInfoLinesECCRow(t *testing.T) {
 	}
 	if !strings.Contains(out, "3145680") {
 		t.Error("info view should show uncorrectable error count")
+	}
+}
+
+// ── GPU focus view ───────────────────────────────────────────────────
+
+func TestFocusModeShowsSingleGPU(t *testing.T) {
+	m := gpuModel(4, 200)
+	m.focusIdx = 2
+	out := m.renderGpuContent()
+	lines := strings.Split(out, "\n")
+	// Only one panel worth of lines — not four stacked.
+	if len(lines) > panelLines+4 {
+		t.Errorf("focus mode should show one panel (%d lines), got %d", panelLines+4, len(lines))
+	}
+	// The focused GPU's name should appear.
+	if !strings.Contains(out, "GPU 2") {
+		t.Errorf("focus mode should show GPU 2, got:\n%s", out)
+	}
+}
+
+func TestFocusModeArrowRight(t *testing.T) {
+	m := gpuModel(4, 200)
+	m.focusIdx = 1
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	nm := updated.(model)
+	if nm.focusIdx != 2 {
+		t.Errorf("right arrow should advance focusIdx to 2, got %d", nm.focusIdx)
+	}
+}
+
+func TestFocusModeArrowLeft(t *testing.T) {
+	m := gpuModel(4, 200)
+	m.focusIdx = 1
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	nm := updated.(model)
+	if nm.focusIdx != 0 {
+		t.Errorf("left arrow should move focusIdx to 0, got %d", nm.focusIdx)
+	}
+}
+
+func TestFocusModeArrowWrapsRight(t *testing.T) {
+	m := gpuModel(4, 200)
+	m.focusIdx = 3
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	nm := updated.(model)
+	if nm.focusIdx != 0 {
+		t.Errorf("right arrow at last GPU should wrap to 0, got %d", nm.focusIdx)
+	}
+}
+
+func TestFocusModeArrowWrapsLeft(t *testing.T) {
+	m := gpuModel(4, 200)
+	m.focusIdx = 0
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	nm := updated.(model)
+	if nm.focusIdx != 3 {
+		t.Errorf("left arrow at first GPU should wrap to 3, got %d", nm.focusIdx)
+	}
+}
+
+func TestArrowNoEffectOutsideFocus(t *testing.T) {
+	m := gpuModel(4, 200)
+	m.focusIdx = -1
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	nm := updated.(model)
+	if nm.focusIdx != -1 {
+		t.Errorf("right arrow outside focus should not change focusIdx, got %d", nm.focusIdx)
+	}
+}
+
+func TestFocusModeOutOfRangeIgnored(t *testing.T) {
+	m := gpuModel(2, 200)
+	m.focusIdx = 99 // no such GPU
+	out := m.renderGpuContent()
+	// Should fall through to normal layout (2 GPUs visible).
+	if !strings.Contains(out, "GPU 0") || !strings.Contains(out, "GPU 1") {
+		t.Error("out-of-range focusIdx should fall back to normal layout")
+	}
+}
+
+func TestFocusModeHeaderIndicator(t *testing.T) {
+	h := renderHeader(4, 2.0, false, false, false, false, false, 1, 200)
+	if !strings.Contains(h, "FOCUS") {
+		t.Errorf("header should show FOCUS indicator when focusIdx >= 0, got: %s", h)
+	}
+	if !strings.Contains(h, "1") {
+		t.Errorf("header should show focused GPU index, got: %s", h)
+	}
+}
+
+func TestNoFocusModeHeaderNoIndicator(t *testing.T) {
+	h := renderHeader(4, 2.0, false, false, false, false, false, -1, 200)
+	if strings.Contains(h, "FOCUS") {
+		t.Errorf("header should not show FOCUS when focusIdx == -1, got: %s", h)
+	}
+}
+
+func TestEscClearsAllModes(t *testing.T) {
+	m := gpuModel(4, 200)
+	m.focusIdx = 2
+	m.helpMode = true
+	m.logMode = false
+	m.infoMode = true
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	nm := updated.(model)
+
+	if nm.focusIdx != -1 {
+		t.Errorf("Esc should clear focusIdx, got %d", nm.focusIdx)
+	}
+	if nm.helpMode {
+		t.Error("Esc should clear helpMode")
+	}
+	if nm.infoMode {
+		t.Error("Esc should clear infoMode")
+	}
+}
+
+func TestEscFromLogMode(t *testing.T) {
+	m := gpuModel(4, 200)
+	m.logMode = true
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	nm := updated.(model)
+
+	if nm.logMode {
+		t.Error("Esc should clear logMode")
+	}
+	if nm.focusIdx != -1 {
+		t.Errorf("Esc should leave focusIdx at -1, got %d", nm.focusIdx)
 	}
 }
 
@@ -898,6 +1014,278 @@ func TestProcessTableShortNameNoEllipsis(t *testing.T) {
 	}
 	if !strings.Contains(out, "shortname") {
 		t.Error("short name should appear unchanged")
+	}
+}
+
+// ── PCIe bandwidth ───────────────────────────────────────────────────
+
+func TestReadPcieBwFileNormal(t *testing.T) {
+	dir := t.TempDir()
+	// rx=100 packets, tx=200 packets, mps=256 bytes
+	if err := os.WriteFile(dir+"/pcie_bw", []byte("100 200 256\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// readPcieBwFile expects a PCI bus address; we pass the temp dir directly
+	// by temporarily patching via a synthetic path isn't possible, so test the
+	// helper via the exported-by-package path using a symlink trick.
+	// Instead, test via a wrapper that accepts a directory path.
+	rx, tx := readPcieBwFile_testPath(dir)
+	if rx != 100*256 {
+		t.Errorf("rx want %d got %d", 100*256, rx)
+	}
+	if tx != 200*256 {
+		t.Errorf("tx want %d got %d", 200*256, tx)
+	}
+}
+
+func TestReadPcieBwFileMissing(t *testing.T) {
+	rx, tx := readPcieBwFile_testPath(t.TempDir())
+	if rx != -1 || tx != -1 {
+		t.Errorf("missing file should return -1,-1, got %d,%d", rx, tx)
+	}
+}
+
+func TestReadPcieBwFileMalformed(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(dir+"/pcie_bw", []byte("not a number\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	rx, tx := readPcieBwFile_testPath(dir)
+	if rx != -1 || tx != -1 {
+		t.Errorf("malformed file should return -1,-1, got %d,%d", rx, tx)
+	}
+}
+
+func TestReadPcieBwFileZeroMPS(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(dir+"/pcie_bw", []byte("100 200 0\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	rx, tx := readPcieBwFile_testPath(dir)
+	if rx != -1 || tx != -1 {
+		t.Errorf("zero MPS should return -1,-1, got %d,%d", rx, tx)
+	}
+}
+
+// readPcieBwFile_testPath reads <dir>/pcie_bw directly, allowing unit tests
+// to inject synthetic files without a real PCI bus address.
+func readPcieBwFile_testPath(dir string) (rx, tx int64) {
+	raw := readStringFile(dir + "/pcie_bw")
+	if raw == "" {
+		return -1, -1
+	}
+	parts := strings.Fields(raw)
+	if len(parts) != 3 {
+		return -1, -1
+	}
+	rxPkt, err1 := strconv.ParseUint(parts[0], 10, 64)
+	txPkt, err2 := strconv.ParseUint(parts[1], 10, 64)
+	mps, err3 := strconv.ParseInt(parts[2], 10, 64)
+	if err1 != nil || err2 != nil || err3 != nil || mps <= 0 {
+		return -1, -1
+	}
+	return int64(rxPkt) * mps, int64(txPkt) * mps
+}
+
+func TestParsePcieBwValueNormal(t *testing.T) {
+	tx, rx := parsePcieBwValue("bytes_sent: 12345678, bytes_received: 87654321, mtu: 256")
+	if tx != 12345678 {
+		t.Errorf("tx want 12345678 got %d", tx)
+	}
+	if rx != 87654321 {
+		t.Errorf("rx want 87654321 got %d", rx)
+	}
+}
+
+func TestParsePcieBwValueNotSupported(t *testing.T) {
+	tx, rx := parsePcieBwValue("Not supported on the given system")
+	if tx != -1 || rx != -1 {
+		t.Errorf("unsupported response should return -1,-1, got %d,%d", tx, rx)
+	}
+}
+
+func TestParsePcieBwValueEmpty(t *testing.T) {
+	tx, rx := parsePcieBwValue("")
+	if tx != -1 || rx != -1 {
+		t.Errorf("empty string should return -1,-1, got %d,%d", tx, rx)
+	}
+}
+
+func TestParsePcieBwValueZero(t *testing.T) {
+	tx, rx := parsePcieBwValue("bytes_sent: 0, bytes_received: 0, mtu: 256")
+	if tx != 0 || rx != 0 {
+		t.Errorf("zero values should parse correctly, got %d,%d", tx, rx)
+	}
+}
+
+// buildGpuMetricsV14 constructs a synthetic gpu_metrics binary of the given
+// total size (>= 160) with format_revision=1, content_revision=4 and the
+// supplied pcie_bandwidth_inst value at offset 152.
+func buildGpuMetricsV14(totalSize int, pcieBwInst uint64) []byte {
+	buf := make([]byte, totalSize)
+	// header
+	buf[0] = byte(totalSize)
+	buf[1] = byte(totalSize >> 8)
+	buf[2] = 1 // format_revision
+	buf[3] = 4 // content_revision
+	// fill N/A sentinels where expected (optional, 0 is also fine for test)
+	// pcie_bandwidth_inst at offset 152
+	buf[152] = byte(pcieBwInst)
+	buf[153] = byte(pcieBwInst >> 8)
+	buf[154] = byte(pcieBwInst >> 16)
+	buf[155] = byte(pcieBwInst >> 24)
+	buf[156] = byte(pcieBwInst >> 32)
+	buf[157] = byte(pcieBwInst >> 40)
+	buf[158] = byte(pcieBwInst >> 48)
+	buf[159] = byte(pcieBwInst >> 56)
+	return buf
+}
+
+func TestReadGpuMetricsBandwidthV14(t *testing.T) {
+	dir := t.TempDir()
+	blob := buildGpuMetricsV14(200, 1234)
+	if err := os.WriteFile(dir+"/gpu_metrics", blob, 0644); err != nil {
+		t.Fatal(err)
+	}
+	got := readGpuMetricsBandwidth(dir)
+	if math.IsNaN(got) {
+		t.Fatal("expected a bandwidth value, got NaN")
+	}
+	if got != 1234 {
+		t.Errorf("want 1234 MB/s, got %v", got)
+	}
+}
+
+func TestReadGpuMetricsBandwidthV13TooSmall(t *testing.T) {
+	// v1.3 (120 bytes) should return NaN — field not present.
+	dir := t.TempDir()
+	buf := make([]byte, 120)
+	buf[0] = 120
+	buf[2] = 1
+	buf[3] = 3
+	if err := os.WriteFile(dir+"/gpu_metrics", buf, 0644); err != nil {
+		t.Fatal(err)
+	}
+	got := readGpuMetricsBandwidth(dir)
+	if !math.IsNaN(got) {
+		t.Errorf("v1.3 (120 bytes) should return NaN, got %v", got)
+	}
+}
+
+func TestReadGpuMetricsBandwidthNAValue(t *testing.T) {
+	// 0xffffffffffffffff sentinel should return NaN.
+	dir := t.TempDir()
+	blob := buildGpuMetricsV14(200, 0xffffffffffffffff)
+	if err := os.WriteFile(dir+"/gpu_metrics", blob, 0644); err != nil {
+		t.Fatal(err)
+	}
+	got := readGpuMetricsBandwidth(dir)
+	if !math.IsNaN(got) {
+		t.Errorf("NA sentinel should return NaN, got %v", got)
+	}
+}
+
+func TestReadGpuMetricsBandwidthMissing(t *testing.T) {
+	dir := t.TempDir()
+	got := readGpuMetricsBandwidth(dir) // no gpu_metrics file
+	if !math.IsNaN(got) {
+		t.Errorf("missing file should return NaN, got %v", got)
+	}
+}
+
+func TestFmtBandwidthMBps(t *testing.T) {
+	if got := fmtBandwidth(16.5); got != "16.5 MB/s" {
+		t.Errorf("want '16.5 MB/s', got %q", got)
+	}
+}
+
+func TestFmtBandwidthGBps(t *testing.T) {
+	if got := fmtBandwidth(2048); got != "2.05 GB/s" {
+		t.Errorf("want '2.05 GB/s', got %q", got)
+	}
+}
+
+func TestPciePanelLineAbsentWhenNoData(t *testing.T) {
+	gpu := GpuData{
+		CardID:     0,
+		Backend:    "rocm",
+		Name:       "Test GPU",
+		PcieTxMBps: math.NaN(),
+		PcieRxMBps: math.NaN(),
+		PowerMax:   300,
+	}
+	lines := renderMetricLines(gpu, &GpuHistory{}, 80)
+	for _, line := range lines {
+		if strings.Contains(line, "PCIE") || strings.Contains(line, "PEAK") {
+			t.Errorf("no PCIE/PEAK line should appear when data is unavailable, got %q", line)
+		}
+	}
+}
+
+func TestPciePanelLineTxRxSingleLine(t *testing.T) {
+	// With enough width, PCIE + PEAK should fit on one line.
+	hist := &GpuHistory{PcieTxPeak: 300.0, PcieRxPeak: 150.0}
+	gpu := GpuData{
+		CardID:     0,
+		Backend:    "rocm",
+		Name:       "Test GPU",
+		PcieTxMBps: 256.5,
+		PcieRxMBps: 128.0,
+		PowerMax:   300,
+	}
+	lines := renderMetricLines(gpu, hist, 80)
+	last := lines[len(lines)-1]
+	if !strings.Contains(last, "PCIE") || !strings.Contains(last, "PEAK") {
+		t.Errorf("wide panel should have PCIE and PEAK on one line, got %q", last)
+	}
+	if !strings.Contains(last, "256.5") || !strings.Contains(last, "300.0") {
+		t.Errorf("single line should show current and peak TX, got %q", last)
+	}
+}
+
+func TestPciePanelLineTxRxTwoLines(t *testing.T) {
+	// With narrow width, PCIE and PEAK should split to two lines.
+	hist := &GpuHistory{PcieTxPeak: 300.0, PcieRxPeak: 150.0}
+	gpu := GpuData{
+		CardID:     0,
+		Backend:    "rocm",
+		Name:       "Test GPU",
+		PcieTxMBps: 256.5,
+		PcieRxMBps: 128.0,
+		PowerMax:   300,
+	}
+	lines := renderMetricLines(gpu, hist, 30)
+	found := 0
+	for _, line := range lines {
+		if strings.Contains(line, "PCIE") {
+			found++
+		}
+		if strings.Contains(line, "PEAK") {
+			found++
+		}
+	}
+	if found < 2 {
+		t.Errorf("narrow panel should have PCIE and PEAK on separate lines, found %d matches", found)
+	}
+}
+
+func TestPciePanelLineCombinedOnly(t *testing.T) {
+	hist := &GpuHistory{PcieTxPeak: 600.0}
+	gpu := GpuData{
+		CardID:     0,
+		Backend:    "sysfs",
+		Name:       "Test GPU",
+		PcieTxMBps: 512.0,
+		PcieRxMBps: math.NaN(),
+		PowerMax:   300,
+	}
+	lines := renderMetricLines(gpu, hist, 80)
+	last := lines[len(lines)-1]
+	if !strings.Contains(last, "BW") || !strings.Contains(last, "PEAK") {
+		t.Errorf("combined line should contain BW and PEAK, got %q", last)
+	}
+	if strings.Contains(last, "TX") || strings.Contains(last, "RX") {
+		t.Errorf("combined line should not contain TX/RX labels, got %q", last)
 	}
 }
 

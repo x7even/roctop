@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"math"
 	"os"
 	"path/filepath"
@@ -160,7 +161,7 @@ func (s *sysfsBackend) CollectData() ([]GpuData, []ProcessData) {
 			if !math.IsNaN(powerCapMicro) {
 				gpu.PowerMax = powerCapMicro / 1_000_000
 				if gpu.PowerMax == 0 {
-					gpu.PowerMax = 30
+					gpu.PowerMax = math.NaN()
 				}
 			} else {
 				gpu.PowerMax = math.NaN()
@@ -185,10 +186,111 @@ func (s *sysfsBackend) CollectData() ([]GpuData, []ProcessData) {
 			gpu.PowerMax = math.NaN()
 		}
 
+		// PCIe bandwidth for the sysfs backend (AMD cards only).
+		// Priority 1: pcie_bw sysfs — TX/RX split, available on GCN-era discrete GPUs.
+		// Priority 2: gpu_metrics binary v1.4+ — combined rate, RDNA3+ discrete GPUs.
+		// Integrated/APU hardware typically has neither.
+		gpu.PcieBwTxDelta = -1
+		gpu.PcieBwRxDelta = -1
+		if card.vendor == "AMD" {
+			if rx, tx := readPcieBwFile(card.pciBus); rx >= 0 {
+				gpu.PcieBwRxDelta = rx
+				gpu.PcieBwTxDelta = tx
+			} else if bw := readGpuMetricsBandwidth(card.deviceDir); !math.IsNaN(bw) {
+				gpu.PcieTxMBps = bw // combined; PcieRxMBps stays NaN → panel shows "BW"
+			}
+		}
+
 		gpus = append(gpus, gpu)
 	}
 
 	return gpus, nil
+}
+
+// ── pcie_bw sysfs ──────────────────────────────────────────────────
+//
+// The kernel amdgpu driver exposes /sys/bus/pci/devices/<PCI>/pcie_bw for
+// GPUs whose ASIC implements hardware PCIe packet counters (GCN1–GCN5 era).
+// Each read returns three space-separated fields:
+//
+//   <rx_packets> <tx_packets> <max_payload_size_bytes>
+//
+// The kernel resets its internal counters on every read, so consecutive reads
+// yield packet counts for the interval between them — not cumulative totals.
+// Converting to bytes: packets × max_payload_size. The caller divides by the
+// elapsed interval to obtain a rate.
+//
+// Returns (-1, -1) when the file is absent, unreadable, or malformed.
+
+func readPcieBwFile(pciBus string) (rx, tx int64) {
+	if pciBus == "" {
+		return -1, -1
+	}
+	raw := readStringFile("/sys/bus/pci/devices/" + pciBus + "/pcie_bw")
+	if raw == "" {
+		return -1, -1
+	}
+	parts := strings.Fields(raw)
+	if len(parts) != 3 {
+		return -1, -1
+	}
+	rxPkt, err1 := strconv.ParseUint(parts[0], 10, 64)
+	txPkt, err2 := strconv.ParseUint(parts[1], 10, 64)
+	mps, err3 := strconv.ParseInt(parts[2], 10, 64)
+	if err1 != nil || err2 != nil || err3 != nil || mps <= 0 {
+		return -1, -1
+	}
+	return int64(rxPkt) * mps, int64(txPkt) * mps
+}
+
+// ── gpu_metrics PCIe bandwidth ──────────────────────────────────────
+//
+// The binary blob at <deviceDir>/gpu_metrics uses a versioned C struct
+// (rsmi_gpu_metrics_t from rocm_smi.h). Layout up to v1.4:
+//
+//   offset   0: metrics_table_header (4 bytes: size u16, fmt_rev u8, content_rev u8)
+//   offset   4: temperatures × 6 (u16 each)
+//   offset  16: utilization × 3 (u16)
+//   offset  22: average_socket_power (u16) + energy_accumulator (u64) + system_clock_counter (u64)
+//   offset  40: avg clocks × 7 (u16) + current clocks × 7 (u16)
+//   offset  68: throttle_status (u32) + fan + pcie_link_{width,speed}
+//   offset  78: [2-byte pad] + gfx/mem_activity_acc (u32×2) + temperature_hbm (u16×4)
+//   offset  96: firmware_timestamp (u64)            ← v1.2+
+//   offset 104: voltage_{soc,gfx,mem} (u16×3)      ← v1.3+
+//   offset 110: [2-byte pad] + indep_throttle_status (u64)
+//   offset 120: current_socket_power (u16) + vcn_activity[4] (u16×4) ← v1.4+
+//   offset 130: [2-byte pad] + gfxclk_lock_status (u32) + xgmi_{width,speed} (u16×2)
+//   offset 140: [4-byte pad] + pcie_bandwidth_acc (u64) + pcie_bandwidth_inst (u64)
+//   offset 152: pcie_bandwidth_inst ← what we read, units: MB/s
+//
+// v1.3 structs are 120 bytes and do NOT contain pcie_bandwidth_inst.
+// v1.4+ structs have content_revision >= 4 and structure_size >= 160.
+
+const (
+	gpuMetricsMinSize      = 160 // minimum size that includes pcie_bandwidth_inst
+	gpuMetricsPcieInstOff  = 152 // byte offset of pcie_bandwidth_inst (uint64, MB/s)
+	gpuMetricsNAValue      = 0xffffffffffffffff
+)
+
+// readGpuMetricsBandwidth returns the instantaneous combined PCIe bandwidth
+// in MB/s, or NaN if the field is absent or the struct version is too old.
+func readGpuMetricsBandwidth(deviceDir string) float64 {
+	data, err := os.ReadFile(deviceDir + "/gpu_metrics")
+	if err != nil || len(data) < gpuMetricsMinSize {
+		return math.NaN()
+	}
+	size := binary.LittleEndian.Uint16(data[0:2])
+	fmtRev := data[2]
+	contentRev := data[3]
+	// Only format_revision=1, content_revision>=4 (v1.4+) have this field.
+	if int(size) != len(data) || fmtRev != 1 || contentRev < 4 {
+		return math.NaN()
+	}
+	bw := binary.LittleEndian.Uint64(data[gpuMetricsPcieInstOff : gpuMetricsPcieInstOff+8])
+	if bw == gpuMetricsNAValue {
+		return math.NaN()
+	}
+	return float64(bw)
 }
 
 // ── sysfs file helpers ──────────────────────────────────────────────

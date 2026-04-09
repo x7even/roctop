@@ -20,7 +20,7 @@ var (
 	headerLog   = lipgloss.NewStyle().Background(lipgloss.Color("#0d1a2d")).Foreground(lipgloss.Color("#ff8700")).Bold(true)
 )
 
-func renderHeader(gpuCount int, refreshSecs float64, paused, infoMode, helpMode, logMode, dataStale bool, width int) string {
+func renderHeader(gpuCount int, refreshSecs float64, paused, infoMode, helpMode, logMode, dataStale bool, focusIdx int, width int) string {
 	var sb strings.Builder
 
 	if paused {
@@ -40,6 +40,8 @@ func renderHeader(gpuCount int, refreshSecs float64, paused, infoMode, helpMode,
 			sb.WriteString(headerHelp.Render("  HELP"))
 		case logMode:
 			sb.WriteString(headerLog.Render("  LOG"))
+		case focusIdx >= 0:
+			sb.WriteString(headerInfo.Render(fmt.Sprintf("  FOCUS GPU %d", focusIdx)))
 		case infoMode:
 			sb.WriteString(headerInfo.Render("  INFO MODE"))
 		default:

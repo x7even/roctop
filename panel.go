@@ -10,6 +10,7 @@ import (
 )
 
 const sparkIndent = 6
+const minBarW = 8
 
 var (
 	warnStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#ff5000")).Bold(true)
@@ -26,7 +27,7 @@ var panelBorder = lipgloss.NewStyle().
 	PaddingLeft(1).
 	PaddingRight(1)
 
-const panelLines = 15
+const panelLines = 16
 
 func renderGpuPanel(gpu GpuData, hist *GpuHistory, width int, infoMode bool) string {
 	// content width = panel width - 2 (border) - 2 (padding)
@@ -38,11 +39,11 @@ func renderGpuPanel(gpu GpuData, hist *GpuHistory, width int, infoMode bool) str
 	var lines []string
 	if infoMode {
 		lines = renderInfoLines(gpu, cw)
-		for len(lines) < panelLines {
-			lines = append(lines, "")
-		}
 	} else {
 		lines = renderMetricLines(gpu, hist, cw)
+	}
+	for len(lines) < panelLines {
+		lines = append(lines, "")
 	}
 
 	content := strings.Join(lines, "\n")
@@ -79,9 +80,6 @@ func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
 			reasons = strings.Join(gpu.ThrottleReasons, ", ")
 		}
 		title += "  " + warnStyle.Render("⚠ THROTTLED: "+reasons)
-	}
-	if gpu.RasUncorrectable > 0 {
-		title += "  " + warnStyle.Render(fmt.Sprintf("⚠ ECC: %d uncorr", gpu.RasUncorrectable))
 	}
 
 	// USE bar + sparkline
@@ -131,10 +129,20 @@ func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
 	if math.IsNaN(pwrAvg) {
 		pwrAvg = 0
 	}
-	if math.IsNaN(pwrMax) {
-		pwrMax = 30
+	pwrMaxKnown := !math.IsNaN(pwrMax)
+	if !pwrMaxKnown {
+		if hist.PowerPeak > 0 {
+			pwrMax = hist.PowerPeak
+		} else {
+			pwrMax = 30 // initial scale before any readings
+		}
 	}
-	pwrSfx := fmt.Sprintf(" %.0fW/%.0fW", pwrAvg, pwrMax)
+	var pwrSfx string
+	if pwrMaxKnown {
+		pwrSfx = fmt.Sprintf(" %.0fW/%.0fW", pwrAvg, pwrMax)
+	} else {
+		pwrSfx = fmt.Sprintf(" %.0fW/~%.0fW", pwrAvg, pwrMax)
+	}
 	pwrValStyle := boldStyle
 	if math.IsNaN(gpu.PowerAvg) {
 		pwrValStyle = noDataStyle
@@ -150,33 +158,38 @@ func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
 		pwrLabel = dimStyle.Render(fmt.Sprintf("%4.0fW ", pwrAvg))
 	}
 
-	// TEMP bar
-	var tempLine string
-	if math.IsNaN(gpu.TempJunc) {
-		tempLine = labelStyle.Render("TEMP ") +
-			renderBar(0, 110, bw(len(" 0°C · FAN 0% 0rpm · CLK 0MHz · MEM 0MHz")), tempGradient) +
-			noDataStyle.Render(fmt.Sprintf(" %s°C", "0")) +
-			dimStyle.Render(" · FAN ") +
-			noDataStyle.Render(fmt.Sprintf("%.0f%%", gpu.FanPercent)) +
-			dimStyle.Render(fmt.Sprintf(" %drpm", gpu.FanRPM)) +
-			dimStyle.Render(" · CLK ") +
-			boldStyle.Render(fmtMHz(gpu.Sclk)) +
-			dimStyle.Render(" · MEM ") +
-			boldStyle.Render(fmtMHz(gpu.Mclk))
-	} else {
-		tmpSfx := fmt.Sprintf(" %.0f°C · FAN %.0f%% %drpm · CLK %s · MEM %s",
-			gpu.TempJunc, gpu.FanPercent, gpu.FanRPM, fmtMHz(gpu.Sclk), fmtMHz(gpu.Mclk))
-		tempLine = labelStyle.Render("TEMP ") +
-			renderBar(gpu.TempJunc, 110, bw(len(tmpSfx)), tempGradient) +
-			boldStyle.Render(fmt.Sprintf(" %.0f°C", gpu.TempJunc)) +
-			dimStyle.Render(" · FAN ") +
-			boldStyle.Render(fmt.Sprintf("%.0f%%", gpu.FanPercent)) +
-			dimStyle.Render(fmt.Sprintf(" %drpm", gpu.FanRPM)) +
-			dimStyle.Render(" · CLK ") +
-			boldStyle.Render(fmtMHz(gpu.Sclk)) +
-			dimStyle.Render(" · MEM ") +
-			boldStyle.Render(fmtMHz(gpu.Mclk))
+	// TEMP bar — separator between metrics adapts to available width.
+	// Full format uses " · " between sections; compact drops the dot to " ".
+	tempVal := gpu.TempJunc
+	tempValStyle := boldStyle
+	if math.IsNaN(tempVal) {
+		tempVal = 0
+		tempValStyle = noDataStyle
 	}
+	sclkStr := fmtMHz(gpu.Sclk)
+	mclkStr := fmtMHz(gpu.Mclk)
+
+	sfxFull := fmt.Sprintf(" %.0f°C · FAN %.0f%% %drpm · CLK %s · MEM %s",
+		tempVal, gpu.FanPercent, gpu.FanRPM, sclkStr, mclkStr)
+	sfxCompact := fmt.Sprintf(" %.0f°C FAN %.0f%% %drpm CLK %s MEM %s",
+		tempVal, gpu.FanPercent, gpu.FanRPM, sclkStr, mclkStr)
+
+	sep := " · "
+	sfxLen := lipgloss.Width(sfxFull)
+	if cw-labelW-sfxLen < minBarW {
+		sep = " "
+		sfxLen = lipgloss.Width(sfxCompact)
+	}
+	tempLine := labelStyle.Render("TEMP ") +
+		renderBar(tempVal, 110, max(minBarW, cw-labelW-sfxLen), tempGradient) +
+		tempValStyle.Render(fmt.Sprintf(" %.0f°C", tempVal)) +
+		dimStyle.Render(sep+"FAN ") +
+		boldStyle.Render(fmt.Sprintf("%.0f%%", gpu.FanPercent)) +
+		dimStyle.Render(fmt.Sprintf(" %drpm", gpu.FanRPM)) +
+		dimStyle.Render(sep+"CLK ") +
+		boldStyle.Render(sclkStr) +
+		dimStyle.Render(sep+"MEM ") +
+		boldStyle.Render(mclkStr)
 
 	// TEMP sparkline — label rows show edge and memory temps when available
 	var tempRows [3]string
@@ -199,7 +212,11 @@ func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
 		tempLabel2 = blankPfx
 	}
 
-	return []string{
+	// PCIE bandwidth line (omitted when no data available).
+	hasTx := !math.IsNaN(gpu.PcieTxMBps)
+	hasRx := !math.IsNaN(gpu.PcieRxMBps)
+
+	lines := []string{
 		title,
 		useLine,
 		useLabel + useRows[0],
@@ -216,6 +233,38 @@ func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
 		tempLabel1 + tempRows[1],
 		tempLabel2 + tempRows[2],
 	}
+
+	switch {
+	case hasTx && hasRx:
+		cur := labelStyle.Render("PCIE ") +
+			dimStyle.Render("TX ") + boldStyle.Render(fmtBandwidth(gpu.PcieTxMBps)) +
+			dimStyle.Render("  RX ") + boldStyle.Render(fmtBandwidth(gpu.PcieRxMBps))
+		peak := dimStyle.Render("  PEAK ") +
+			dimStyle.Render("TX ") + boldStyle.Render(fmtBandwidth(hist.PcieTxPeak)) +
+			dimStyle.Render("  RX ") + boldStyle.Render(fmtBandwidth(hist.PcieRxPeak))
+		if lipgloss.Width(cur+peak) <= cw {
+			lines = append(lines, cur+peak)
+		} else {
+			lines = append(lines, cur)
+			lines = append(lines, labelStyle.Render("PEAK ")+
+				dimStyle.Render("TX ")+boldStyle.Render(fmtBandwidth(hist.PcieTxPeak))+
+				dimStyle.Render("  RX ")+boldStyle.Render(fmtBandwidth(hist.PcieRxPeak)))
+		}
+	case hasTx:
+		cur := labelStyle.Render("PCIE ") +
+			dimStyle.Render("BW ") + boldStyle.Render(fmtBandwidth(gpu.PcieTxMBps))
+		peak := dimStyle.Render("  PEAK ") +
+			dimStyle.Render("BW ") + boldStyle.Render(fmtBandwidth(hist.PcieTxPeak))
+		if lipgloss.Width(cur+peak) <= cw {
+			lines = append(lines, cur+peak)
+		} else {
+			lines = append(lines, cur)
+			lines = append(lines, labelStyle.Render("PEAK ")+
+				dimStyle.Render("BW ")+boldStyle.Render(fmtBandwidth(hist.PcieTxPeak)))
+		}
+	}
+
+	return lines
 }
 
 // ── Info view ─────────────────────────────────────────────────────────
@@ -333,3 +382,9 @@ func fmtWattsOrNA(v float64) string {
 	return fmt.Sprintf("%.0fW", v)
 }
 
+func fmtBandwidth(mbps float64) string {
+	if mbps >= 1000 {
+		return fmt.Sprintf("%.2f GB/s", mbps/1000)
+	}
+	return fmt.Sprintf("%.1f MB/s", mbps)
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/csv"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"sort"
@@ -18,7 +19,7 @@ func (n *nvidiaBackend) Name() string { return "nvidia" }
 
 var nvidiaGPUQuery = []string{
 	"--query-gpu=index,name,temperature.gpu,utilization.gpu,utilization.memory," +
-		"memory.total,memory.used,power.draw,power.limit,fan.speed," +
+		"memory.total,memory.used,power.draw,power.limit,power.max_limit,fan.speed," +
 		"clocks.current.graphics,clocks.current.memory," +
 		"pcie.link.gen.current,pcie.link.width.current," +
 		"driver_version,vbios_version,pstate,pci.bus_id",
@@ -27,6 +28,7 @@ var nvidiaGPUQuery = []string{
 
 func (n *nvidiaBackend) CollectData() ([]GpuData, []ProcessData) {
 	gpus := n.collectGPUs()
+	n.collectBandwidth(gpus)
 	procs := n.collectProcesses(gpus)
 	return gpus, procs
 }
@@ -43,7 +45,7 @@ func runNvidiaSMI(args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
-const nvidiaExpectedFields = 18
+const nvidiaExpectedFields = 19
 
 func (n *nvidiaBackend) collectGPUs() []GpuData {
 	output := runNvidiaSMI(nvidiaGPUQuery...)
@@ -76,8 +78,14 @@ func (n *nvidiaBackend) collectGPUs() []GpuData {
 
 func parseNvidiaGPULine(f []string) GpuData {
 	gpu := GpuData{
-		Vendor:  "NVIDIA",
-		Backend: "nvidia",
+		Vendor:        "NVIDIA",
+		Backend:       "nvidia",
+		PcieTxBytes:   -1,
+		PcieRxBytes:   -1,
+		PcieBwTxDelta: -1,
+		PcieBwRxDelta: -1,
+		PcieTxMBps:    math.NaN(),
+		PcieRxMBps:    math.NaN(),
 	}
 
 	gpu.CardID = parseInt(f[0], 0)
@@ -99,23 +107,26 @@ func parseNvidiaGPULine(f []string) GpuData {
 	}
 
 	gpu.PowerAvg = parseFloat(f[7], 0)
-	gpu.PowerMax = parseFloat(f[8], 300)
+	gpu.PowerMax = parseFloat(f[8], 0)
 	if gpu.PowerMax == 0 {
-		gpu.PowerMax = 300
+		gpu.PowerMax = parseFloat(f[9], 0) // fall back to power.max_limit
+	}
+	if gpu.PowerMax == 0 {
+		gpu.PowerMax = math.NaN() // let panel handle unknown limit
 	}
 
-	gpu.FanPercent = parseFloat(f[9], 0)
+	gpu.FanPercent = parseFloat(f[10], 0)
 
-	gpu.Sclk = parseInt(f[10], 0)
-	gpu.Mclk = parseInt(f[11], 0)
+	gpu.Sclk = parseInt(f[11], 0)
+	gpu.Mclk = parseInt(f[12], 0)
 
-	gpu.PcieSpeed = pcieGenToSpeed(parseInt(f[12], 0))
-	gpu.PcieWidth = parseInt(f[13], 0)
+	gpu.PcieSpeed = pcieGenToSpeed(parseInt(f[13], 0))
+	gpu.PcieWidth = parseInt(f[14], 0)
 
-	gpu.DriverVersion = strings.TrimSpace(f[14])
-	gpu.Vbios = strings.TrimSpace(f[15])
-	gpu.PerfLevel = strings.TrimSpace(f[16])
-	gpu.PcieBus = strings.TrimSpace(f[17])
+	gpu.DriverVersion = strings.TrimSpace(f[15])
+	gpu.Vbios = strings.TrimSpace(f[16])
+	gpu.PerfLevel = strings.TrimSpace(f[17])
+	gpu.PcieBus = strings.TrimSpace(f[18])
 
 	return gpu
 }
@@ -134,6 +145,35 @@ func pcieGenToSpeed(gen int) string {
 		return "32.0GT/s"
 	default:
 		return ""
+	}
+}
+
+func (n *nvidiaBackend) collectBandwidth(gpus []GpuData) {
+	output := runNvidiaSMI("dmon", "-s", "t", "-c", "1")
+	if output == "" {
+		return
+	}
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 3 {
+			continue
+		}
+		idx := parseInt(fields[0], -1)
+		if idx < 0 || idx >= len(gpus) {
+			continue
+		}
+		rx := parseFloat(fields[1], math.NaN())
+		tx := parseFloat(fields[2], math.NaN())
+		if !math.IsNaN(rx) {
+			gpus[idx].PcieRxMBps = rx
+		}
+		if !math.IsNaN(tx) {
+			gpus[idx].PcieTxMBps = tx
+		}
 	}
 }
 

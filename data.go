@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -14,7 +15,7 @@ import (
 	"time"
 )
 
-const maxHistory = 120
+const maxHistory = 512
 
 // ── Backend interface ───────────────────────────────────────────────
 
@@ -112,6 +113,17 @@ type GpuData struct {
 
 	RasCorrectable   int64
 	RasUncorrectable int64
+
+	// PCIe bandwidth — three source priority:
+	//  1. rocm-smi --showbw: cumulative byte counters (TX/RX split); model diffs them.
+	//  2. pcie_bw sysfs:     per-read byte deltas (TX/RX split); kernel resets on each read.
+	//  3. gpu_metrics v1.4+: instantaneous combined rate; set directly as PcieTxMBps.
+	PcieTxBytes   int64   // rocm-smi cumulative bytes sent; -1 = unavailable
+	PcieRxBytes   int64   // rocm-smi cumulative bytes received; -1 = unavailable
+	PcieBwTxDelta int64   // pcie_bw TX byte delta since last read; -1 = unavailable
+	PcieBwRxDelta int64   // pcie_bw RX byte delta since last read; -1 = unavailable
+	PcieTxMBps    float64 // final TX rate MB/s (NaN = unavailable; combined when PcieRxMBps NaN)
+	PcieRxMBps    float64 // final RX rate MB/s (NaN = unavailable)
 }
 
 type ProcessData struct {
@@ -148,9 +160,14 @@ func (r *RingBuffer) Values() []float64 {
 }
 
 type GpuHistory struct {
-	GpuUse  RingBuffer
-	Power   RingBuffer
-	TempJnc RingBuffer
+	GpuUse     RingBuffer
+	Power      RingBuffer
+	TempJnc    RingBuffer
+	PcieTx     RingBuffer // TX rate MB/s (or combined BW when RX unavailable)
+	PcieRx     RingBuffer // RX rate MB/s (only populated when TX/RX split available)
+	PcieTxPeak float64    // all-time peak TX MB/s
+	PcieRxPeak float64    // all-time peak RX MB/s
+	PowerPeak  float64    // all-time peak power draw (W)
 }
 
 func (g GpuData) HistKey() string {
@@ -301,6 +318,9 @@ func runJSON(extraFlags ...string) map[string]interface{} {
 		return nil
 	}
 
+	if len(bytes.TrimSpace(out)) == 0 {
+		return nil
+	}
 	var result map[string]interface{}
 	if err := json.Unmarshal(out, &result); err != nil {
 		logf("rocm-smi %s: JSON parse error: %s", strings.Join(extraFlags, " "), err.Error())
@@ -312,7 +332,16 @@ func runJSON(extraFlags ...string) map[string]interface{} {
 // ── Main metrics parser ──────────────────────────────────────────────
 
 func parseGPU(cardID int, d map[string]interface{}) GpuData {
-	gpu := GpuData{CardID: cardID, PowerMax: 300.0}
+	gpu := GpuData{
+		CardID:        cardID,
+		PowerMax:      math.NaN(),
+		PcieTxBytes:   -1,
+		PcieRxBytes:   -1,
+		PcieBwTxDelta: -1,
+		PcieBwRxDelta: -1,
+		PcieTxMBps:    math.NaN(),
+		PcieRxMBps:    math.NaN(),
+	}
 
 	series := getString(d, "Card Series")
 	model := getString(d, "Card Model")
@@ -348,9 +377,9 @@ func parseGPU(cardID int, d map[string]interface{}) GpuData {
 	}
 
 	gpu.PowerAvg = parseFloat(getString(d, "Average Graphics Package Power (W)"), 0)
-	gpu.PowerMax = parseFloat(getString(d, "Max Graphics Package Power (W)"), 300)
+	gpu.PowerMax = parseFloat(getString(d, "Max Graphics Package Power (W)"), 0)
 	if gpu.PowerMax == 0 {
-		gpu.PowerMax = 300
+		gpu.PowerMax = math.NaN()
 	}
 
 	gpu.FanPercent = parseFloat(getString(d, "Fan speed (%)"), 0)
@@ -485,6 +514,78 @@ func applyMetrics(gpus []GpuData) {
 				gts := float64(v) / 10
 				gpus[idx].PcieSpeed = fmt.Sprintf("%.1fGT/s", gts)
 			}
+		}
+	}
+}
+
+var rePcieBwSent = regexp.MustCompile(`bytes_sent:\s*(\d+)`)
+var rePcieBwRecv = regexp.MustCompile(`bytes_received:\s*(\d+)`)
+
+// parsePcieBwValue parses the rocm-smi --showbw value string.
+// Example: "bytes_sent: 12345678, bytes_received: 87654321, mtu: 256"
+// Returns -1 for either field when not present or on parse failure.
+func parsePcieBwValue(s string) (tx, rx int64) {
+	tx, rx = -1, -1
+	if m := rePcieBwSent.FindStringSubmatch(s); m != nil {
+		if v, err := strconv.ParseInt(m[1], 10, 64); err == nil {
+			tx = v
+		}
+	}
+	if m := rePcieBwRecv.FindStringSubmatch(s); m != nil {
+		if v, err := strconv.ParseInt(m[1], 10, 64); err == nil {
+			rx = v
+		}
+	}
+	return
+}
+
+// applyBandwidth calls rocm-smi --showbw and populates PcieTxBytes/PcieRxBytes
+// as raw cumulative byte counters. Rates are computed later by the model once
+// two consecutive readings are available.
+func applyBandwidth(gpus []GpuData) {
+	data := runJSON("--showbw")
+	if data == nil {
+		return
+	}
+	byID := make(map[int]int)
+	for i, g := range gpus {
+		byID[g.CardID] = i
+	}
+	for key, val := range data {
+		if !strings.HasPrefix(strings.ToLower(key), "card") {
+			continue
+		}
+		cardID, err := strconv.Atoi(key[4:])
+		if err != nil {
+			continue
+		}
+		idx, ok := byID[cardID]
+		if !ok {
+			continue
+		}
+		d, ok := val.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		bwStr := getString(d, "pcie_bw")
+		if bwStr == "" {
+			continue
+		}
+		tx, rx := parsePcieBwValue(bwStr)
+		if tx >= 0 {
+			gpus[idx].PcieTxBytes = tx
+			gpus[idx].PcieRxBytes = rx
+		}
+	}
+
+	// Fallback to the kernel pcie_bw sysfs file for GPUs where rocm-smi
+	// --showbw is unsupported. The file exposes packet counts since the last
+	// read; multiplying by max-payload-size gives byte deltas.
+	for i := range gpus {
+		if gpus[i].PcieTxBytes < 0 && gpus[i].PcieBus != "" {
+			rx, tx := readPcieBwFile(gpus[i].PcieBus)
+			gpus[i].PcieBwRxDelta = rx
+			gpus[i].PcieBwTxDelta = tx
 		}
 	}
 }
@@ -713,6 +814,7 @@ func (r *rocmBackend) CollectData() ([]GpuData, []ProcessData) {
 
 	if len(gpus) > 0 {
 		applyMetrics(gpus)
+		applyBandwidth(gpus)
 	}
 
 	return gpus, procs
