@@ -10,6 +10,7 @@ import (
 )
 
 const sparkIndent = 6
+const minBarW = 8
 
 var (
 	warnStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#ff5000")).Bold(true)
@@ -157,33 +158,38 @@ func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
 		pwrLabel = dimStyle.Render(fmt.Sprintf("%4.0fW ", pwrAvg))
 	}
 
-	// TEMP bar
-	var tempLine string
-	if math.IsNaN(gpu.TempJunc) {
-		tempLine = labelStyle.Render("TEMP ") +
-			renderBar(0, 110, bw(len(" 0°C · FAN 0% 0rpm · CLK 0MHz · MEM 0MHz")), tempGradient) +
-			noDataStyle.Render(fmt.Sprintf(" %s°C", "0")) +
-			dimStyle.Render(" · FAN ") +
-			noDataStyle.Render(fmt.Sprintf("%.0f%%", gpu.FanPercent)) +
-			dimStyle.Render(fmt.Sprintf(" %drpm", gpu.FanRPM)) +
-			dimStyle.Render(" · CLK ") +
-			boldStyle.Render(fmtMHz(gpu.Sclk)) +
-			dimStyle.Render(" · MEM ") +
-			boldStyle.Render(fmtMHz(gpu.Mclk))
-	} else {
-		tmpSfx := fmt.Sprintf(" %.0f°C · FAN %.0f%% %drpm · CLK %s · MEM %s",
-			gpu.TempJunc, gpu.FanPercent, gpu.FanRPM, fmtMHz(gpu.Sclk), fmtMHz(gpu.Mclk))
-		tempLine = labelStyle.Render("TEMP ") +
-			renderBar(gpu.TempJunc, 110, bw(len(tmpSfx)), tempGradient) +
-			boldStyle.Render(fmt.Sprintf(" %.0f°C", gpu.TempJunc)) +
-			dimStyle.Render(" · FAN ") +
-			boldStyle.Render(fmt.Sprintf("%.0f%%", gpu.FanPercent)) +
-			dimStyle.Render(fmt.Sprintf(" %drpm", gpu.FanRPM)) +
-			dimStyle.Render(" · CLK ") +
-			boldStyle.Render(fmtMHz(gpu.Sclk)) +
-			dimStyle.Render(" · MEM ") +
-			boldStyle.Render(fmtMHz(gpu.Mclk))
+	// TEMP bar — separator between metrics adapts to available width.
+	// Full format uses " · " between sections; compact drops the dot to " ".
+	tempVal := gpu.TempJunc
+	tempValStyle := boldStyle
+	if math.IsNaN(tempVal) {
+		tempVal = 0
+		tempValStyle = noDataStyle
 	}
+	sclkStr := fmtMHz(gpu.Sclk)
+	mclkStr := fmtMHz(gpu.Mclk)
+
+	sfxFull := fmt.Sprintf(" %.0f°C · FAN %.0f%% %drpm · CLK %s · MEM %s",
+		tempVal, gpu.FanPercent, gpu.FanRPM, sclkStr, mclkStr)
+	sfxCompact := fmt.Sprintf(" %.0f°C FAN %.0f%% %drpm CLK %s MEM %s",
+		tempVal, gpu.FanPercent, gpu.FanRPM, sclkStr, mclkStr)
+
+	sep := " · "
+	sfxLen := lipgloss.Width(sfxFull)
+	if cw-labelW-sfxLen < minBarW {
+		sep = " "
+		sfxLen = lipgloss.Width(sfxCompact)
+	}
+	tempLine := labelStyle.Render("TEMP ") +
+		renderBar(tempVal, 110, max(minBarW, cw-labelW-sfxLen), tempGradient) +
+		tempValStyle.Render(fmt.Sprintf(" %.0f°C", tempVal)) +
+		dimStyle.Render(sep+"FAN ") +
+		boldStyle.Render(fmt.Sprintf("%.0f%%", gpu.FanPercent)) +
+		dimStyle.Render(fmt.Sprintf(" %drpm", gpu.FanRPM)) +
+		dimStyle.Render(sep+"CLK ") +
+		boldStyle.Render(sclkStr) +
+		dimStyle.Render(sep+"MEM ") +
+		boldStyle.Render(mclkStr)
 
 	// TEMP sparkline — label rows show edge and memory temps when available
 	var tempRows [3]string
