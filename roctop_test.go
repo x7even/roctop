@@ -191,6 +191,7 @@ func TestParseNvidiaGPULine(t *testing.T) {
 		"512",                            // memory.used (MiB)
 		"65.23",                          // power.draw
 		"200.00",                         // power.limit
+		"200.00",                         // power.max_limit
 		"30",                             // fan.speed
 		"1500",                           // clocks.current.graphics
 		"810",                            // clocks.current.memory
@@ -251,15 +252,15 @@ func TestParseNvidiaGPULine(t *testing.T) {
 func TestParseNvidiaGPULineWithNA(t *testing.T) {
 	fields := []string{
 		"0", "GPU Name", "47", "5", "30",
-		"8188", "1861", "9.19", "[N/A]", "[N/A]",
+		"8188", "1861", "9.19", "[N/A]", "105.00", "[N/A]",
 		"210", "810", "4", "8",
 		"595.79", "95.06", "P5", "00000000:64:00.0",
 	}
 
 	gpu := parseNvidiaGPULine(fields)
 
-	if gpu.PowerMax != 300 { // default when [N/A] parses to 0
-		t.Errorf("PowerMax = %f, want 300 (default)", gpu.PowerMax)
+	if gpu.PowerMax != 105 { // falls back to power.max_limit
+		t.Errorf("PowerMax = %f, want 105 (from power.max_limit)", gpu.PowerMax)
 	}
 	if gpu.FanPercent != 0 { // [N/A] should parse to 0
 		t.Errorf("FanPercent = %f, want 0", gpu.FanPercent)
@@ -1205,7 +1206,6 @@ func TestFmtBandwidthGBps(t *testing.T) {
 }
 
 func TestPciePanelLineAbsentWhenNoData(t *testing.T) {
-	// GPU with NaN PcieTxMBps — PCIE line should be empty (blank row).
 	gpu := GpuData{
 		CardID:     0,
 		Backend:    "rocm",
@@ -1215,16 +1215,16 @@ func TestPciePanelLineAbsentWhenNoData(t *testing.T) {
 		PowerMax:   300,
 	}
 	lines := renderMetricLines(gpu, &GpuHistory{}, 80)
-	if len(lines) != panelLines {
-		t.Errorf("renderMetricLines should return %d lines, got %d", panelLines, len(lines))
-	}
-	// Last line (PCIE) should be blank.
-	if lines[panelLines-1] != "" {
-		t.Errorf("PCIE line should be empty when no data, got %q", lines[panelLines-1])
+	for _, line := range lines {
+		if strings.Contains(line, "PCIE") || strings.Contains(line, "PEAK") {
+			t.Errorf("no PCIE/PEAK line should appear when data is unavailable, got %q", line)
+		}
 	}
 }
 
-func TestPciePanelLineTxRx(t *testing.T) {
+func TestPciePanelLineTxRxSingleLine(t *testing.T) {
+	// With enough width, PCIE + PEAK should fit on one line.
+	hist := &GpuHistory{PcieTxPeak: 300.0, PcieRxPeak: 150.0}
 	gpu := GpuData{
 		CardID:     0,
 		Backend:    "rocm",
@@ -1233,17 +1233,44 @@ func TestPciePanelLineTxRx(t *testing.T) {
 		PcieRxMBps: 128.0,
 		PowerMax:   300,
 	}
-	lines := renderMetricLines(gpu, &GpuHistory{}, 80)
-	last := lines[panelLines-1]
-	if !strings.Contains(last, "TX") || !strings.Contains(last, "RX") {
-		t.Errorf("PCIE line with split data should contain TX and RX, got %q", last)
+	lines := renderMetricLines(gpu, hist, 80)
+	last := lines[len(lines)-1]
+	if !strings.Contains(last, "PCIE") || !strings.Contains(last, "PEAK") {
+		t.Errorf("wide panel should have PCIE and PEAK on one line, got %q", last)
 	}
-	if !strings.Contains(last, "256.5") {
-		t.Errorf("PCIE line should show TX rate, got %q", last)
+	if !strings.Contains(last, "256.5") || !strings.Contains(last, "300.0") {
+		t.Errorf("single line should show current and peak TX, got %q", last)
+	}
+}
+
+func TestPciePanelLineTxRxTwoLines(t *testing.T) {
+	// With narrow width, PCIE and PEAK should split to two lines.
+	hist := &GpuHistory{PcieTxPeak: 300.0, PcieRxPeak: 150.0}
+	gpu := GpuData{
+		CardID:     0,
+		Backend:    "rocm",
+		Name:       "Test GPU",
+		PcieTxMBps: 256.5,
+		PcieRxMBps: 128.0,
+		PowerMax:   300,
+	}
+	lines := renderMetricLines(gpu, hist, 30)
+	found := 0
+	for _, line := range lines {
+		if strings.Contains(line, "PCIE") {
+			found++
+		}
+		if strings.Contains(line, "PEAK") {
+			found++
+		}
+	}
+	if found < 2 {
+		t.Errorf("narrow panel should have PCIE and PEAK on separate lines, found %d matches", found)
 	}
 }
 
 func TestPciePanelLineCombinedOnly(t *testing.T) {
+	hist := &GpuHistory{PcieTxPeak: 600.0}
 	gpu := GpuData{
 		CardID:     0,
 		Backend:    "sysfs",
@@ -1252,13 +1279,13 @@ func TestPciePanelLineCombinedOnly(t *testing.T) {
 		PcieRxMBps: math.NaN(),
 		PowerMax:   300,
 	}
-	lines := renderMetricLines(gpu, &GpuHistory{}, 80)
-	last := lines[panelLines-1]
-	if !strings.Contains(last, "BW") {
-		t.Errorf("combined PCIE line should contain 'BW', got %q", last)
+	lines := renderMetricLines(gpu, hist, 80)
+	last := lines[len(lines)-1]
+	if !strings.Contains(last, "BW") || !strings.Contains(last, "PEAK") {
+		t.Errorf("combined line should contain BW and PEAK, got %q", last)
 	}
 	if strings.Contains(last, "TX") || strings.Contains(last, "RX") {
-		t.Errorf("combined PCIE line should not contain TX/RX labels, got %q", last)
+		t.Errorf("combined line should not contain TX/RX labels, got %q", last)
 	}
 }
 

@@ -50,6 +50,7 @@ type model struct {
 
 	// PCIe bandwidth rate computation.
 	pciePrev     map[string][2]int64 // HistKey → [txBytes, rxBytes] from previous tick
+	pcieBwLogged map[string]bool     // HistKey → true once "unsupported" has been logged
 	lastDataTime time.Time
 }
 
@@ -58,7 +59,8 @@ func newModel(interval time.Duration) model {
 		histories: make(map[string]*GpuHistory),
 		interval:  interval,
 		focusIdx:  -1,
-		pciePrev:  make(map[string][2]int64),
+		pciePrev:     make(map[string][2]int64),
+		pcieBwLogged: make(map[string]bool),
 	}
 }
 
@@ -251,6 +253,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				if !math.IsNaN(gpu.PowerAvg) {
 					h.Power.Push(gpu.PowerAvg)
+					if gpu.PowerAvg > h.PowerPeak {
+						h.PowerPeak = gpu.PowerAvg
+					}
 				}
 				if !math.IsNaN(gpu.TempJunc) {
 					h.TempJnc.Push(gpu.TempJunc)
@@ -281,12 +286,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				// Priority 3: gpu_metrics combined rate — already set as PcieTxMBps
 				// by the sysfs backend; PcieRxMBps stays NaN → panel shows "BW".
-				// Push computed rates (or sysfs combined value) to history.
+
+				// If no source provided data after the first tick, log once.
+				if math.IsNaN(gpu.PcieTxMBps) && elapsed > 0 && !m.pcieBwLogged[key] {
+					m.pcieBwLogged[key] = true
+					logf("PCIe TX/RX unsupported by %s", gpu.Name)
+				}
+
+				// Push computed rates (or sysfs combined value) to history
+				// and track all-time peaks.
 				if !math.IsNaN(gpu.PcieTxMBps) {
 					h.PcieTx.Push(gpu.PcieTxMBps)
+					if gpu.PcieTxMBps > h.PcieTxPeak {
+						h.PcieTxPeak = gpu.PcieTxMBps
+					}
 				}
 				if !math.IsNaN(gpu.PcieRxMBps) {
 					h.PcieRx.Push(gpu.PcieRxMBps)
+					if gpu.PcieRxMBps > h.PcieRxPeak {
+						h.PcieRxPeak = gpu.PcieRxMBps
+					}
 				}
 			}
 			m.gpus = msg.gpus

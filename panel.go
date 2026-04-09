@@ -38,11 +38,11 @@ func renderGpuPanel(gpu GpuData, hist *GpuHistory, width int, infoMode bool) str
 	var lines []string
 	if infoMode {
 		lines = renderInfoLines(gpu, cw)
-		for len(lines) < panelLines {
-			lines = append(lines, "")
-		}
 	} else {
 		lines = renderMetricLines(gpu, hist, cw)
+	}
+	for len(lines) < panelLines {
+		lines = append(lines, "")
 	}
 
 	content := strings.Join(lines, "\n")
@@ -128,10 +128,20 @@ func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
 	if math.IsNaN(pwrAvg) {
 		pwrAvg = 0
 	}
-	if math.IsNaN(pwrMax) {
-		pwrMax = 30
+	pwrMaxKnown := !math.IsNaN(pwrMax)
+	if !pwrMaxKnown {
+		if hist.PowerPeak > 0 {
+			pwrMax = hist.PowerPeak
+		} else {
+			pwrMax = 30 // initial scale before any readings
+		}
 	}
-	pwrSfx := fmt.Sprintf(" %.0fW/%.0fW", pwrAvg, pwrMax)
+	var pwrSfx string
+	if pwrMaxKnown {
+		pwrSfx = fmt.Sprintf(" %.0fW/%.0fW", pwrAvg, pwrMax)
+	} else {
+		pwrSfx = fmt.Sprintf(" %.0fW/~%.0fW", pwrAvg, pwrMax)
+	}
 	pwrValStyle := boldStyle
 	if math.IsNaN(gpu.PowerAvg) {
 		pwrValStyle = noDataStyle
@@ -196,21 +206,11 @@ func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
 		tempLabel2 = blankPfx
 	}
 
-	// PCIE bandwidth line (always rendered; blank when no data available).
-	var pcieLine string
+	// PCIE bandwidth line (omitted when no data available).
 	hasTx := !math.IsNaN(gpu.PcieTxMBps)
 	hasRx := !math.IsNaN(gpu.PcieRxMBps)
-	switch {
-	case hasTx && hasRx:
-		pcieLine = labelStyle.Render("PCIE ") +
-			dimStyle.Render("TX ") + boldStyle.Render(fmtBandwidth(gpu.PcieTxMBps)) +
-			dimStyle.Render("  RX ") + boldStyle.Render(fmtBandwidth(gpu.PcieRxMBps))
-	case hasTx:
-		pcieLine = labelStyle.Render("PCIE ") +
-			dimStyle.Render("BW ") + boldStyle.Render(fmtBandwidth(gpu.PcieTxMBps))
-	}
 
-	return []string{
+	lines := []string{
 		title,
 		useLine,
 		useLabel + useRows[0],
@@ -226,8 +226,39 @@ func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
 		tempLabel + tempRows[0],
 		tempLabel1 + tempRows[1],
 		tempLabel2 + tempRows[2],
-		pcieLine,
 	}
+
+	switch {
+	case hasTx && hasRx:
+		cur := labelStyle.Render("PCIE ") +
+			dimStyle.Render("TX ") + boldStyle.Render(fmtBandwidth(gpu.PcieTxMBps)) +
+			dimStyle.Render("  RX ") + boldStyle.Render(fmtBandwidth(gpu.PcieRxMBps))
+		peak := dimStyle.Render("  PEAK ") +
+			dimStyle.Render("TX ") + boldStyle.Render(fmtBandwidth(hist.PcieTxPeak)) +
+			dimStyle.Render("  RX ") + boldStyle.Render(fmtBandwidth(hist.PcieRxPeak))
+		if lipgloss.Width(cur+peak) <= cw {
+			lines = append(lines, cur+peak)
+		} else {
+			lines = append(lines, cur)
+			lines = append(lines, labelStyle.Render("PEAK ")+
+				dimStyle.Render("TX ")+boldStyle.Render(fmtBandwidth(hist.PcieTxPeak))+
+				dimStyle.Render("  RX ")+boldStyle.Render(fmtBandwidth(hist.PcieRxPeak)))
+		}
+	case hasTx:
+		cur := labelStyle.Render("PCIE ") +
+			dimStyle.Render("BW ") + boldStyle.Render(fmtBandwidth(gpu.PcieTxMBps))
+		peak := dimStyle.Render("  PEAK ") +
+			dimStyle.Render("BW ") + boldStyle.Render(fmtBandwidth(hist.PcieTxPeak))
+		if lipgloss.Width(cur+peak) <= cw {
+			lines = append(lines, cur+peak)
+		} else {
+			lines = append(lines, cur)
+			lines = append(lines, labelStyle.Render("PEAK ")+
+				dimStyle.Render("BW ")+boldStyle.Render(fmtBandwidth(hist.PcieTxPeak)))
+		}
+	}
+
+	return lines
 }
 
 // ── Info view ─────────────────────────────────────────────────────────
