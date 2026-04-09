@@ -318,6 +318,9 @@ func runJSON(extraFlags ...string) map[string]interface{} {
 		return nil
 	}
 
+	if len(bytes.TrimSpace(out)) == 0 {
+		return nil
+	}
 	var result map[string]interface{}
 	if err := json.Unmarshal(out, &result); err != nil {
 		logf("rocm-smi %s: JSON parse error: %s", strings.Join(extraFlags, " "), err.Error())
