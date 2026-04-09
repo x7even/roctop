@@ -161,7 +161,7 @@ func (s *sysfsBackend) CollectData() ([]GpuData, []ProcessData) {
 			if !math.IsNaN(powerCapMicro) {
 				gpu.PowerMax = powerCapMicro / 1_000_000
 				if gpu.PowerMax == 0 {
-					gpu.PowerMax = 30
+					gpu.PowerMax = math.NaN()
 				}
 			} else {
 				gpu.PowerMax = math.NaN()

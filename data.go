@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-const maxHistory = 120
+const maxHistory = 512
 
 // ── Backend interface ───────────────────────────────────────────────
 
@@ -160,11 +160,14 @@ func (r *RingBuffer) Values() []float64 {
 }
 
 type GpuHistory struct {
-	GpuUse  RingBuffer
-	Power   RingBuffer
-	TempJnc RingBuffer
-	PcieTx  RingBuffer // TX rate MB/s (or combined BW when RX unavailable)
-	PcieRx  RingBuffer // RX rate MB/s (only populated when TX/RX split available)
+	GpuUse     RingBuffer
+	Power      RingBuffer
+	TempJnc    RingBuffer
+	PcieTx     RingBuffer // TX rate MB/s (or combined BW when RX unavailable)
+	PcieRx     RingBuffer // RX rate MB/s (only populated when TX/RX split available)
+	PcieTxPeak float64    // all-time peak TX MB/s
+	PcieRxPeak float64    // all-time peak RX MB/s
+	PowerPeak  float64    // all-time peak power draw (W)
 }
 
 func (g GpuData) HistKey() string {
@@ -328,7 +331,7 @@ func runJSON(extraFlags ...string) map[string]interface{} {
 func parseGPU(cardID int, d map[string]interface{}) GpuData {
 	gpu := GpuData{
 		CardID:        cardID,
-		PowerMax:      300.0,
+		PowerMax:      math.NaN(),
 		PcieTxBytes:   -1,
 		PcieRxBytes:   -1,
 		PcieBwTxDelta: -1,
@@ -371,9 +374,9 @@ func parseGPU(cardID int, d map[string]interface{}) GpuData {
 	}
 
 	gpu.PowerAvg = parseFloat(getString(d, "Average Graphics Package Power (W)"), 0)
-	gpu.PowerMax = parseFloat(getString(d, "Max Graphics Package Power (W)"), 300)
+	gpu.PowerMax = parseFloat(getString(d, "Max Graphics Package Power (W)"), 0)
 	if gpu.PowerMax == 0 {
-		gpu.PowerMax = 300
+		gpu.PowerMax = math.NaN()
 	}
 
 	gpu.FanPercent = parseFloat(getString(d, "Fan speed (%)"), 0)
