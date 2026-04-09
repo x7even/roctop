@@ -1015,6 +1015,184 @@ func TestProcessTableShortNameNoEllipsis(t *testing.T) {
 	}
 }
 
+// ── PCIe bandwidth ───────────────────────────────────────────────────
+
+func TestParsePcieBwValueNormal(t *testing.T) {
+	tx, rx := parsePcieBwValue("bytes_sent: 12345678, bytes_received: 87654321, mtu: 256")
+	if tx != 12345678 {
+		t.Errorf("tx want 12345678 got %d", tx)
+	}
+	if rx != 87654321 {
+		t.Errorf("rx want 87654321 got %d", rx)
+	}
+}
+
+func TestParsePcieBwValueNotSupported(t *testing.T) {
+	tx, rx := parsePcieBwValue("Not supported on the given system")
+	if tx != -1 || rx != -1 {
+		t.Errorf("unsupported response should return -1,-1, got %d,%d", tx, rx)
+	}
+}
+
+func TestParsePcieBwValueEmpty(t *testing.T) {
+	tx, rx := parsePcieBwValue("")
+	if tx != -1 || rx != -1 {
+		t.Errorf("empty string should return -1,-1, got %d,%d", tx, rx)
+	}
+}
+
+func TestParsePcieBwValueZero(t *testing.T) {
+	tx, rx := parsePcieBwValue("bytes_sent: 0, bytes_received: 0, mtu: 256")
+	if tx != 0 || rx != 0 {
+		t.Errorf("zero values should parse correctly, got %d,%d", tx, rx)
+	}
+}
+
+// buildGpuMetricsV14 constructs a synthetic gpu_metrics binary of the given
+// total size (>= 160) with format_revision=1, content_revision=4 and the
+// supplied pcie_bandwidth_inst value at offset 152.
+func buildGpuMetricsV14(totalSize int, pcieBwInst uint64) []byte {
+	buf := make([]byte, totalSize)
+	// header
+	buf[0] = byte(totalSize)
+	buf[1] = byte(totalSize >> 8)
+	buf[2] = 1 // format_revision
+	buf[3] = 4 // content_revision
+	// fill N/A sentinels where expected (optional, 0 is also fine for test)
+	// pcie_bandwidth_inst at offset 152
+	buf[152] = byte(pcieBwInst)
+	buf[153] = byte(pcieBwInst >> 8)
+	buf[154] = byte(pcieBwInst >> 16)
+	buf[155] = byte(pcieBwInst >> 24)
+	buf[156] = byte(pcieBwInst >> 32)
+	buf[157] = byte(pcieBwInst >> 40)
+	buf[158] = byte(pcieBwInst >> 48)
+	buf[159] = byte(pcieBwInst >> 56)
+	return buf
+}
+
+func TestReadGpuMetricsBandwidthV14(t *testing.T) {
+	dir := t.TempDir()
+	blob := buildGpuMetricsV14(200, 1234)
+	if err := os.WriteFile(dir+"/gpu_metrics", blob, 0644); err != nil {
+		t.Fatal(err)
+	}
+	got := readGpuMetricsBandwidth(dir)
+	if math.IsNaN(got) {
+		t.Fatal("expected a bandwidth value, got NaN")
+	}
+	if got != 1234 {
+		t.Errorf("want 1234 MB/s, got %v", got)
+	}
+}
+
+func TestReadGpuMetricsBandwidthV13TooSmall(t *testing.T) {
+	// v1.3 (120 bytes) should return NaN — field not present.
+	dir := t.TempDir()
+	buf := make([]byte, 120)
+	buf[0] = 120
+	buf[2] = 1
+	buf[3] = 3
+	if err := os.WriteFile(dir+"/gpu_metrics", buf, 0644); err != nil {
+		t.Fatal(err)
+	}
+	got := readGpuMetricsBandwidth(dir)
+	if !math.IsNaN(got) {
+		t.Errorf("v1.3 (120 bytes) should return NaN, got %v", got)
+	}
+}
+
+func TestReadGpuMetricsBandwidthNAValue(t *testing.T) {
+	// 0xffffffffffffffff sentinel should return NaN.
+	dir := t.TempDir()
+	blob := buildGpuMetricsV14(200, 0xffffffffffffffff)
+	if err := os.WriteFile(dir+"/gpu_metrics", blob, 0644); err != nil {
+		t.Fatal(err)
+	}
+	got := readGpuMetricsBandwidth(dir)
+	if !math.IsNaN(got) {
+		t.Errorf("NA sentinel should return NaN, got %v", got)
+	}
+}
+
+func TestReadGpuMetricsBandwidthMissing(t *testing.T) {
+	dir := t.TempDir()
+	got := readGpuMetricsBandwidth(dir) // no gpu_metrics file
+	if !math.IsNaN(got) {
+		t.Errorf("missing file should return NaN, got %v", got)
+	}
+}
+
+func TestFmtBandwidthMBps(t *testing.T) {
+	if got := fmtBandwidth(16.5); got != "16.5 MB/s" {
+		t.Errorf("want '16.5 MB/s', got %q", got)
+	}
+}
+
+func TestFmtBandwidthGBps(t *testing.T) {
+	if got := fmtBandwidth(2048); got != "2.05 GB/s" {
+		t.Errorf("want '2.05 GB/s', got %q", got)
+	}
+}
+
+func TestPciePanelLineAbsentWhenNoData(t *testing.T) {
+	// GPU with NaN PcieTxMBps — PCIE line should be empty (blank row).
+	gpu := GpuData{
+		CardID:     0,
+		Backend:    "rocm",
+		Name:       "Test GPU",
+		PcieTxMBps: math.NaN(),
+		PcieRxMBps: math.NaN(),
+		PowerMax:   300,
+	}
+	lines := renderMetricLines(gpu, &GpuHistory{}, 80)
+	if len(lines) != panelLines {
+		t.Errorf("renderMetricLines should return %d lines, got %d", panelLines, len(lines))
+	}
+	// Last line (PCIE) should be blank.
+	if lines[panelLines-1] != "" {
+		t.Errorf("PCIE line should be empty when no data, got %q", lines[panelLines-1])
+	}
+}
+
+func TestPciePanelLineTxRx(t *testing.T) {
+	gpu := GpuData{
+		CardID:     0,
+		Backend:    "rocm",
+		Name:       "Test GPU",
+		PcieTxMBps: 256.5,
+		PcieRxMBps: 128.0,
+		PowerMax:   300,
+	}
+	lines := renderMetricLines(gpu, &GpuHistory{}, 80)
+	last := lines[panelLines-1]
+	if !strings.Contains(last, "TX") || !strings.Contains(last, "RX") {
+		t.Errorf("PCIE line with split data should contain TX and RX, got %q", last)
+	}
+	if !strings.Contains(last, "256.5") {
+		t.Errorf("PCIE line should show TX rate, got %q", last)
+	}
+}
+
+func TestPciePanelLineCombinedOnly(t *testing.T) {
+	gpu := GpuData{
+		CardID:     0,
+		Backend:    "sysfs",
+		Name:       "Test GPU",
+		PcieTxMBps: 512.0,
+		PcieRxMBps: math.NaN(),
+		PowerMax:   300,
+	}
+	lines := renderMetricLines(gpu, &GpuHistory{}, 80)
+	last := lines[panelLines-1]
+	if !strings.Contains(last, "BW") {
+		t.Errorf("combined PCIE line should contain 'BW', got %q", last)
+	}
+	if strings.Contains(last, "TX") || strings.Contains(last, "RX") {
+		t.Errorf("combined PCIE line should not contain TX/RX labels, got %q", last)
+	}
+}
+
 // ── Test helper ─────────────────────────────────────────────────────
 
 func writeTestFile(path, content string) error {

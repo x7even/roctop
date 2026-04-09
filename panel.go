@@ -26,7 +26,7 @@ var panelBorder = lipgloss.NewStyle().
 	PaddingLeft(1).
 	PaddingRight(1)
 
-const panelLines = 15
+const panelLines = 16
 
 func renderGpuPanel(gpu GpuData, hist *GpuHistory, width int, infoMode bool) string {
 	// content width = panel width - 2 (border) - 2 (padding)
@@ -196,6 +196,20 @@ func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
 		tempLabel2 = blankPfx
 	}
 
+	// PCIE bandwidth line (always rendered; blank when no data available).
+	var pcieLine string
+	hasTx := !math.IsNaN(gpu.PcieTxMBps)
+	hasRx := !math.IsNaN(gpu.PcieRxMBps)
+	switch {
+	case hasTx && hasRx:
+		pcieLine = labelStyle.Render("PCIE ") +
+			dimStyle.Render("TX ") + boldStyle.Render(fmtBandwidth(gpu.PcieTxMBps)) +
+			dimStyle.Render("  RX ") + boldStyle.Render(fmtBandwidth(gpu.PcieRxMBps))
+	case hasTx:
+		pcieLine = labelStyle.Render("PCIE ") +
+			dimStyle.Render("BW ") + boldStyle.Render(fmtBandwidth(gpu.PcieTxMBps))
+	}
+
 	return []string{
 		title,
 		useLine,
@@ -212,6 +226,7 @@ func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
 		tempLabel + tempRows[0],
 		tempLabel1 + tempRows[1],
 		tempLabel2 + tempRows[2],
+		pcieLine,
 	}
 }
 
@@ -328,5 +343,12 @@ func fmtWattsOrNA(v float64) string {
 		return ""
 	}
 	return fmt.Sprintf("%.0fW", v)
+}
+
+func fmtBandwidth(mbps float64) string {
+	if mbps >= 1000 {
+		return fmt.Sprintf("%.2f GB/s", mbps/1000)
+	}
+	return fmt.Sprintf("%.1f MB/s", mbps)
 }
 

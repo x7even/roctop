@@ -47,6 +47,10 @@ type model struct {
 	vp            viewport.Model
 	vpReady       bool
 	staticFetched bool
+
+	// PCIe bandwidth rate computation.
+	pciePrev     map[string][2]int64 // HistKey → [txBytes, rxBytes] from previous tick
+	lastDataTime time.Time
 }
 
 func newModel(interval time.Duration) model {
@@ -54,6 +58,7 @@ func newModel(interval time.Duration) model {
 		histories: make(map[string]*GpuHistory),
 		interval:  interval,
 		focusIdx:  -1,
+		pciePrev:  make(map[string][2]int64),
 	}
 }
 
@@ -223,6 +228,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.dataStale = true
 		} else {
 			m.dataStale = false
+			now := time.Now()
+			elapsed := 0.0
+			if !m.lastDataTime.IsZero() {
+				elapsed = now.Sub(m.lastDataTime).Seconds()
+			}
+			m.lastDataTime = now
+
 			byKey := make(map[string]GpuData)
 			for _, g := range m.gpus {
 				byKey[g.HistKey()] = g
@@ -245,6 +257,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				if prev, ok := byKey[key]; ok {
 					carryStaticFields(&prev, gpu)
+				}
+
+				// PCIe bandwidth: diff raw byte counters to compute MB/s rates.
+				if gpu.PcieTxBytes >= 0 && elapsed > 0 {
+					if prev, ok := m.pciePrev[key]; ok {
+						txDelta := gpu.PcieTxBytes - prev[0]
+						rxDelta := gpu.PcieRxBytes - prev[1]
+						if txDelta >= 0 && rxDelta >= 0 { // skip on counter reset/wrap
+							gpu.PcieTxMBps = float64(txDelta) / elapsed / 1_000_000
+							gpu.PcieRxMBps = float64(rxDelta) / elapsed / 1_000_000
+						}
+					}
+					m.pciePrev[key] = [2]int64{gpu.PcieTxBytes, gpu.PcieRxBytes}
+				}
+				// Push computed rates (or sysfs combined value) to history.
+				if !math.IsNaN(gpu.PcieTxMBps) {
+					h.PcieTx.Push(gpu.PcieTxMBps)
+				}
+				if !math.IsNaN(gpu.PcieRxMBps) {
+					h.PcieRx.Push(gpu.PcieRxMBps)
 				}
 			}
 			m.gpus = msg.gpus
