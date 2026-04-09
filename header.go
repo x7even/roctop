@@ -71,6 +71,11 @@ func renderHeader(gpuCount int, refreshSecs float64, paused, infoMode, helpMode,
 		} else {
 			sb.WriteString(headerDim.Render(":log"))
 		}
+		// Arrow-key cycle hint — only shown when it fits.
+		arrowHint := headerKey.Render("  ←→") + headerDim.Render(":cycle")
+		if lipgloss.Width(sb.String())+lipgloss.Width(arrowHint) <= width {
+			sb.WriteString(arrowHint)
+		}
 	}
 
 	line := sb.String()
