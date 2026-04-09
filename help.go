@@ -84,5 +84,12 @@ func renderHelp(width int) string {
 		key("Esc", "Return to main metrics screen from any mode"),
 	}
 
+	lines = append(lines,
+		"",
+		helpSectionStyle.Render("── Acknowledgements ──────────────────────────────────────────"),
+		helpTextStyle.Render("Special thanks to Kai."),
+		helpTextStyle.Render("Shoutout to r/LocalLLM for the feedback — you help shape this tool."),
+	)
+
 	return strings.Join(lines, "\n")
 }
