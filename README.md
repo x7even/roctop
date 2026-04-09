@@ -11,9 +11,14 @@ A terminal UI for real-time GPU monitoring on Linux — supports AMD (ROCm), NVI
 - Real-time 2-column GPU grid: utilisation, VRAM, power, temperature, clocks, fan
 - Multi-row braille sparklines with gradient colouring — variation within narrow ranges stays visible
 - Throttle detection with reason decoding (THERMAL, POWER_LIMIT, etc.)
+- ECC/RAS error detection — warnings shown in info view with correctable/uncorrectable counts
+- PCIe bandwidth monitoring — TX/RX rates with all-time peak tracking (AMD and NVIDIA)
 - Static info view (press `i`): VBIOS, PCIe topology, memory vendor, driver, unique ID
+- Per-GPU focus view (press `0–9`): expand any GPU to full width
+- Arrow key navigation — cycle between overview and individual GPU focus views
 - Process table showing which processes are using VRAM and on which GPUs
 - Scrollable GPU panel region — header and process table stay anchored when the terminal is small
+- Scrollable event log (press `l`) — rocm-smi errors and backend warnings
 - Adjustable refresh rate, pause, and force-refresh keybindings
 - **Multi-backend**: monitors AMD discrete, NVIDIA discrete, and integrated GPUs simultaneously
 - **Auto-detection**: probes for available GPU backends at startup — no configuration needed
@@ -39,9 +44,9 @@ Metrics that aren't available for a given GPU are shown in dark red to distingui
 
 ## Installation
 
-### One-line install (recommended)
+### One-line install / upgrade (recommended)
 
-Auto-detects architecture (amd64 / arm64) and installs to `/usr/local/bin`:
+Auto-detects architecture (amd64 / arm64) and installs to `/usr/local/bin`. Re-running upgrades to the latest version:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/x7even/roctop/main/install.sh | bash
@@ -97,12 +102,17 @@ roctop --refresh 1
 |-----|--------|
 | `q` / `ctrl+c` | Quit |
 | `i` | Toggle info view (static GPU details) |
+| `?` | Toggle help panel |
+| `l` | Toggle event log |
 | `r` | Force refresh |
 | `+` / `=` | Increase refresh rate |
 | `-` | Decrease refresh rate |
 | `p` | Pause / resume |
+| `0–9` | Focus GPU by index at full width (same key to toggle off) |
+| `←` / `→` | Cycle between overview and individual GPU focus views |
 | `↑` / `↓` / `PgUp` / `PgDn` | Scroll GPU panels |
 | Mouse wheel | Scroll GPU panels |
+| `Esc` | Return to main metrics screen from any mode |
 
 ## Project structure
 
@@ -115,6 +125,7 @@ roctop/
 ├── render.go        # Bar charts, braille sparkline renderer, colour gradients
 ├── panel.go         # Per-GPU metric and info panel layouts
 ├── header.go        # Top status bar
+├── help.go          # Help panel renderer
 ├── process.go       # GPU process table
 ├── model.go         # Bubble Tea model (Init / Update / View), viewport
 ├── go.mod
