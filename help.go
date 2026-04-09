@@ -80,7 +80,7 @@ func renderHelp(width int) string {
 		key("-", "Decrease refresh rate (slower, max 30 s)"),
 		key("↑ ↓ / scroll", "Scroll GPU panels"),
 		key("0–9", "Focus GPU by index at full width (same key to toggle off)"),
-		key("← →", "Navigate to previous / next GPU while in focus view"),
+		key("← →", "Cycle between overview and individual GPU focus views"),
 		key("Esc", "Return to main metrics screen from any mode"),
 	}
 

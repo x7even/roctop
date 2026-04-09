@@ -424,19 +424,49 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.vp.SetYOffset(m.gpuVpOffset)
 			}
 		case "left":
-			if m.focusIdx >= 0 && len(m.gpus) > 0 {
-				m.focusIdx = (m.focusIdx - 1 + len(m.gpus)) % len(m.gpus)
+			if len(m.gpus) > 0 {
+				if m.focusIdx == -1 {
+					// Overview → focus last GPU
+					m.gpuVpOffset = m.vp.YOffset
+					m.focusIdx = len(m.gpus) - 1
+					m.helpMode = false
+					m.logMode = false
+				} else if m.focusIdx == 0 {
+					// First GPU → back to overview
+					m.focusIdx = -1
+				} else {
+					m.focusIdx--
+				}
 				if m.vpReady {
 					m.setViewportContent()
-					m.vp.GotoTop()
+					if m.focusIdx == -1 {
+						m.vp.SetYOffset(m.gpuVpOffset)
+					} else {
+						m.vp.GotoTop()
+					}
 				}
 			}
 		case "right":
-			if m.focusIdx >= 0 && len(m.gpus) > 0 {
-				m.focusIdx = (m.focusIdx + 1) % len(m.gpus)
+			if len(m.gpus) > 0 {
+				if m.focusIdx == -1 {
+					// Overview → focus first GPU
+					m.gpuVpOffset = m.vp.YOffset
+					m.focusIdx = 0
+					m.helpMode = false
+					m.logMode = false
+				} else if m.focusIdx == len(m.gpus)-1 {
+					// Last GPU → back to overview
+					m.focusIdx = -1
+				} else {
+					m.focusIdx++
+				}
 				if m.vpReady {
 					m.setViewportContent()
-					m.vp.GotoTop()
+					if m.focusIdx == -1 {
+						m.vp.SetYOffset(m.gpuVpOffset)
+					} else {
+						m.vp.GotoTop()
+					}
 				}
 			}
 		case "0", "1", "2", "3", "4", "5", "6", "7", "8", "9":
