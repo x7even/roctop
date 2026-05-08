@@ -126,6 +126,12 @@ func (s *sysfsBackend) CollectData() ([]GpuData, []ProcessData) {
 			gpu.VramPercent = float64(gpu.VramUsed) / float64(gpu.VramTotal) * 100
 		}
 
+		gpu.GttTotal = readInt64File(card.deviceDir+"/mem_info_gtt_total", 0)
+		gpu.GttUsed = readInt64File(card.deviceDir+"/mem_info_gtt_used", 0)
+		if gpu.GttTotal > 0 {
+			gpu.GttPercent = float64(gpu.GttUsed) / float64(gpu.GttTotal) * 100
+		}
+
 		// Clocks
 		gpu.Sclk = parseDpmFreq(card.deviceDir + "/pp_dpm_sclk")
 		gpu.Mclk = parseDpmFreq(card.deviceDir + "/pp_dpm_mclk")

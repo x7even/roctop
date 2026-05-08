@@ -37,6 +37,7 @@ const rocmSMI = "rocm-smi"
 var rocmSMIFlags = []string{
 	"--showuse",
 	"--showmeminfo", "vram",
+	"--showmeminfo", "gtt",
 	"--showmemuse",
 	"-t",
 	"--showpower",
@@ -82,6 +83,10 @@ type GpuData struct {
 	VramTotal   int64
 	VramUsed    int64
 	VramPercent float64
+
+	GttTotal   int64
+	GttUsed    int64
+	GttPercent float64
 
 	PowerAvg float64
 	PowerMax float64
@@ -374,6 +379,12 @@ func parseGPU(cardID int, d map[string]interface{}) GpuData {
 		gpu.VramPercent = float64(gpu.VramUsed) / float64(gpu.VramTotal) * 100
 	} else {
 		gpu.VramPercent = parseFloat(getString(d, "GPU Memory Allocated (VRAM%)"), 0)
+	}
+
+	gpu.GttTotal = parseInt64(getString(d, "GTT Total Memory (B)"), 0)
+	gpu.GttUsed = parseInt64(getString(d, "GTT Total Used Memory (B)"), 0)
+	if gpu.GttTotal > 0 {
+		gpu.GttPercent = float64(gpu.GttUsed) / float64(gpu.GttTotal) * 100
 	}
 
 	gpu.PowerAvg = parseFloat(getString(d, "Average Graphics Package Power (W)"), 0)

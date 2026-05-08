@@ -107,6 +107,16 @@ func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
 		boldStyle.Render(fmt.Sprintf(" %5.1f%%", gpu.VramPercent)) +
 		dimStyle.Render(gbInfo)
 
+	// GTT bar — system RAM borrowed by GPU; only shown when available (APU/iGPU)
+	var gttLine string
+	if gpu.GttTotal > 0 {
+		gttInfo := fmt.Sprintf(" %s/%s", fmtGB(gpu.GttUsed), fmtGB(gpu.GttTotal))
+		gttLine = labelStyle.Render("GTT  ") +
+			renderBar(gpu.GttPercent, 100, bw(pctW+len(gttInfo)), utilGradient) +
+			boldStyle.Render(fmt.Sprintf(" %5.1f%%", gpu.GttPercent)) +
+			dimStyle.Render(gttInfo)
+	}
+
 	// MACT bar — memory read/write activity %
 	memAct := gpu.MemActivity
 	if math.IsNaN(memAct) {
@@ -232,6 +242,10 @@ func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
 		tempLabel + tempRows[0],
 		tempLabel1 + tempRows[1],
 		tempLabel2 + tempRows[2],
+	}
+
+	if gttLine != "" {
+		lines = append(lines, gttLine)
 	}
 
 	switch {
@@ -363,7 +377,7 @@ func renderInfoLines(gpu GpuData, cw int) []string {
 		eccLine = kvRow("ECC Corr", "", "ECC Uncorr", "")
 	}
 
-	return []string{
+	rows := []string{
 		title,
 		kvRow("Vendor", vendor, "GFX", gpu.GfxVersion),
 		kvRow("VBIOS", gpu.Vbios, "PCIe", strings.TrimSpace(pcieVal)),
@@ -373,6 +387,11 @@ func renderInfoLines(gpu GpuData, cw int) []string {
 		kvRow("Unique ID", gpu.UniqueID, "SKU", gpu.SKU),
 		eccLine,
 	}
+	if gpu.GttTotal > 0 {
+		gttVal := fmt.Sprintf("%s/%s", fmtGB(gpu.GttUsed), fmtGB(gpu.GttTotal))
+		rows = append(rows, kv("GTT Mem", gttVal))
+	}
+	return rows
 }
 
 func fmtWattsOrNA(v float64) string {
