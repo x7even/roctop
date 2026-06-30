@@ -107,9 +107,11 @@ func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
 		boldStyle.Render(fmt.Sprintf(" %5.1f%%", gpu.VramPercent)) +
 		dimStyle.Render(gbInfo)
 
-	// GTT bar — system RAM borrowed by GPU; only shown when available (APU/iGPU)
+	// GTT bar — only shown on iGPU/APU (VRAM < 4 GiB), where GTT is the primary
+	// memory pool. Discrete cards always report non-zero GTT used (driver overhead)
+	// and a large system-RAM-sized ceiling, both of which are misleading noise.
 	var gttLine string
-	if gpu.GttTotal > 0 {
+	if gpu.GttTotal > 0 && gpu.VramTotal < 4<<30 {
 		gttInfo := fmt.Sprintf(" %s/%s", fmtGB(gpu.GttUsed), fmtGB(gpu.GttTotal))
 		gttLine = labelStyle.Render("GTT  ") +
 			renderBar(gpu.GttPercent, 100, bw(pctW+len(gttInfo)), utilGradient) +
@@ -387,7 +389,7 @@ func renderInfoLines(gpu GpuData, cw int) []string {
 		kvRow("Unique ID", gpu.UniqueID, "SKU", gpu.SKU),
 		eccLine,
 	}
-	if gpu.GttTotal > 0 {
+	if gpu.GttTotal > 0 && gpu.VramTotal < 4<<30 {
 		gttVal := fmt.Sprintf("%s/%s", fmtGB(gpu.GttUsed), fmtGB(gpu.GttTotal))
 		rows = append(rows, kv("GTT Mem", gttVal))
 	}
