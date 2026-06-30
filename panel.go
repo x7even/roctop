@@ -27,7 +27,7 @@ var panelBorder = lipgloss.NewStyle().
 	PaddingLeft(1).
 	PaddingRight(1)
 
-const panelLines = 18 // 15 base rows + 1 GTT (optional) + 2 PCIe (optional, max)
+const panelLines = 16 // 15 base content rows + 1 blank gap; optional GTT/PCIe rows extend beyond this
 
 func renderGpuPanel(gpu GpuData, hist *GpuHistory, width int, infoMode bool) string {
 	// content width = panel width - 2 (border) - 2 (padding)

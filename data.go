@@ -37,7 +37,6 @@ const rocmSMI = "rocm-smi"
 var rocmSMIFlags = []string{
 	"--showuse",
 	"--showmeminfo", "vram",
-	"--showmeminfo", "gtt",
 	"--showmemuse",
 	"-t",
 	"--showpower",
@@ -381,12 +380,6 @@ func parseGPU(cardID int, d map[string]interface{}) GpuData {
 		gpu.VramPercent = parseFloat(getString(d, "GPU Memory Allocated (VRAM%)"), 0)
 	}
 
-	gpu.GttTotal = parseInt64(getString(d, "GTT Total Memory (B)"), 0)
-	gpu.GttUsed = parseInt64(getString(d, "GTT Total Used Memory (B)"), 0)
-	if gpu.GttTotal > 0 {
-		gpu.GttPercent = float64(gpu.GttUsed) / float64(gpu.GttTotal) * 100
-	}
-
 	gpu.PowerAvg = parseFloat(getString(d, "Average Graphics Package Power (W)"), 0)
 	gpu.PowerMax = parseFloat(getString(d, "Max Graphics Package Power (W)"), 0)
 	if gpu.PowerMax == 0 {
@@ -548,6 +541,44 @@ func parsePcieBwValue(s string) (tx, rx int64) {
 		}
 	}
 	return
+}
+
+// applyGTT calls rocm-smi --showmeminfo gtt in a separate pass so it does not
+// clobber the --showmeminfo vram keys (rocm-smi only returns the last meminfo
+// type when multiple --showmeminfo flags are combined in one call).
+func applyGTT(gpus []GpuData) {
+	data := runJSON("--showmeminfo", "gtt")
+	if data == nil {
+		return
+	}
+	byID := make(map[int]int)
+	for i, g := range gpus {
+		byID[g.CardID] = i
+	}
+	for key, val := range data {
+		if !strings.HasPrefix(strings.ToLower(key), "card") {
+			continue
+		}
+		cardID, err := strconv.Atoi(key[4:])
+		if err != nil {
+			continue
+		}
+		idx, ok := byID[cardID]
+		if !ok {
+			continue
+		}
+		d, ok := val.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		total := parseInt64(getString(d, "GTT Total Memory (B)"), 0)
+		used := parseInt64(getString(d, "GTT Total Used Memory (B)"), 0)
+		if total > 0 {
+			gpus[idx].GttTotal = total
+			gpus[idx].GttUsed = used
+			gpus[idx].GttPercent = float64(used) / float64(total) * 100
+		}
+	}
 }
 
 // applyBandwidth calls rocm-smi --showbw and populates PcieTxBytes/PcieRxBytes
@@ -825,6 +856,7 @@ func (r *rocmBackend) CollectData() ([]GpuData, []ProcessData) {
 
 	if len(gpus) > 0 {
 		applyMetrics(gpus)
+		applyGTT(gpus)
 		applyBandwidth(gpus)
 	}
 
