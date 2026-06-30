@@ -336,10 +336,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.vp.SetContent(m.renderGpuContent())
 			m.vp.SetYOffset(yOff)
 		}
-		if !m.staticFetched && len(m.gpus) > 0 {
-			m.staticFetched = true
-			return m, fetchStaticInfoCmd(m.gpus)
-		}
 
 	case tickMsg:
 		if m.paused {

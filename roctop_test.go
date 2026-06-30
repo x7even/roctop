@@ -447,14 +447,17 @@ func TestRenderMetricLinesCount(t *testing.T) {
 	}
 	hist := &GpuHistory{}
 	lines := renderMetricLines(gpu, hist, 80)
-	if len(lines) != panelLines {
-		t.Errorf("renderMetricLines returned %d lines, want %d (panelLines)", len(lines), panelLines)
+	// renderMetricLines returns a variable count (15 base + optional GTT/PCIe lines).
+	// renderGpuPanel pads UP TO panelLines; it never trims. So the invariant is
+	// len(lines) <= panelLines, not == panelLines.
+	if len(lines) > panelLines {
+		t.Errorf("renderMetricLines returned %d lines, want at most %d (panelLines)", len(lines), panelLines)
 	}
 }
 
 func TestRenderMetricLinesNaNInputs(t *testing.T) {
 	// All-NaN GPU (e.g. a sysfs GPU with no sensors readable) must not panic
-	// and must still return panelLines lines.
+	// and must return at most panelLines lines (renderGpuPanel pads the rest).
 	gpu := GpuData{
 		CardID:      1,
 		Backend:     "sysfs",
@@ -469,8 +472,8 @@ func TestRenderMetricLinesNaNInputs(t *testing.T) {
 	}
 	hist := &GpuHistory{}
 	lines := renderMetricLines(gpu, hist, 80)
-	if len(lines) != panelLines {
-		t.Errorf("renderMetricLines (all-NaN) returned %d lines, want %d", len(lines), panelLines)
+	if len(lines) > panelLines {
+		t.Errorf("renderMetricLines (all-NaN) returned %d lines, want at most %d", len(lines), panelLines)
 	}
 }
 

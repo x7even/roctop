@@ -153,6 +153,14 @@ func (n *nvidiaBackend) collectBandwidth(gpus []GpuData) {
 	if output == "" {
 		return
 	}
+
+	// Map CardID → slice index so non-contiguous GPU indices
+	// (e.g. GPU 0 and GPU 2 with no GPU 1) are resolved correctly.
+	byCardID := make(map[int]int, len(gpus))
+	for i, g := range gpus {
+		byCardID[g.CardID] = i
+	}
+
 	for _, line := range strings.Split(output, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -162,55 +170,78 @@ func (n *nvidiaBackend) collectBandwidth(gpus []GpuData) {
 		if len(fields) < 3 {
 			continue
 		}
-		idx := parseInt(fields[0], -1)
-		if idx < 0 || idx >= len(gpus) {
+		cardID := parseInt(fields[0], -1)
+		if cardID < 0 {
+			continue
+		}
+		sliceIdx, ok := byCardID[cardID]
+		if !ok {
 			continue
 		}
 		rx := parseFloat(fields[1], math.NaN())
 		tx := parseFloat(fields[2], math.NaN())
 		if !math.IsNaN(rx) {
-			gpus[idx].PcieRxMBps = rx
+			gpus[sliceIdx].PcieRxMBps = rx
 		}
 		if !math.IsNaN(tx) {
-			gpus[idx].PcieTxMBps = tx
+			gpus[sliceIdx].PcieTxMBps = tx
 		}
 	}
 }
 
 func (n *nvidiaBackend) collectProcesses(gpus []GpuData) []ProcessData {
-	output := runNvidiaSMI(
-		"--query-compute-apps=pid,used_gpu_memory",
-		"--format=csv,noheader,nounits",
-	)
-
 	procs := make(map[int]*ProcessData)
 
-	r := csv.NewReader(strings.NewReader(output))
-	r.TrimLeadingSpace = true
-
-	for {
-		fields, err := r.Read()
-		if err != nil {
-			break
-		}
-		if len(fields) < 2 {
+	for _, gpu := range gpus {
+		output := runNvidiaSMI(
+			"-i", strconv.Itoa(gpu.CardID),
+			"--query-compute-apps=pid,used_gpu_memory",
+			"--format=csv,noheader,nounits",
+		)
+		if output == "" {
 			continue
 		}
 
-		pid := parseInt(fields[0], 0)
-		if pid == 0 {
-			continue
-		}
-		vramMiB := parseInt64(fields[1], 0)
-		vramBytes := vramMiB * 1024 * 1024
+		r := csv.NewReader(strings.NewReader(output))
+		r.TrimLeadingSpace = true
 
-		if p, ok := procs[pid]; ok {
-			p.VramUsed += vramBytes
-		} else {
-			procs[pid] = &ProcessData{
-				PID:      pid,
-				Name:     procName(pid),
-				VramUsed: vramBytes,
+		for {
+			fields, err := r.Read()
+			if err != nil {
+				break
+			}
+			if len(fields) < 2 {
+				continue
+			}
+
+			pid := parseInt(fields[0], 0)
+			if pid == 0 {
+				continue
+			}
+			vramMiB := parseInt64(fields[1], 0)
+			vramBytes := vramMiB * 1024 * 1024
+
+			if p, ok := procs[pid]; ok {
+				p.VramUsed += vramBytes
+				// Append this GPU to GpuIDs if not already present
+				// (a process can span multiple GPUs in MIG or NVLink setups).
+				found := false
+				for _, gid := range p.GpuIDs {
+					if gid == gpu.CardID {
+						found = true
+						break
+					}
+				}
+				if !found {
+					p.GpuIDs = append(p.GpuIDs, gpu.CardID)
+				}
+			} else {
+				procs[pid] = &ProcessData{
+					PID:      pid,
+					Name:     procName(pid),
+					GpuIDs:   []int{gpu.CardID},
+					VramUsed: vramBytes,
+				}
 			}
 		}
 	}
