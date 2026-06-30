@@ -2,17 +2,22 @@
 
 A terminal UI for real-time GPU monitoring on Linux — supports AMD (ROCm), NVIDIA, and integrated GPUs. Inspired by the fantastic work of [btop](https://github.com/aristocratos/btop).
 
+roctop has two main views — the metrics view and the static info view (`i`):
+
 ![roctop metrics view](https://raw.githubusercontent.com/x7even/roctop/main/roctop-metrics.png)
+*Real-time utilisation, memory, power, temperature, clocks, and more*
 
 ![roctop info view](https://raw.githubusercontent.com/x7even/roctop/main/roctop-info.png)
+*Static GPU details: VBIOS, PCIe topology, memory vendor, driver version*
 
 ## Features
 
-- Real-time 2-column GPU grid: utilisation, VRAM, power, temperature, clocks, fan
+- Real-time 2-column GPU grid: utilisation, VRAM, GTT memory (APU/iGPU), power, temperature, clocks, fan
 - Multi-row braille sparklines with gradient colouring — variation within narrow ranges stays visible
+- PCIe bandwidth monitoring — TX/RX rates with all-time peak tracking (AMD and NVIDIA)
 - Throttle detection with reason decoding (THERMAL, POWER_LIMIT, etc.)
 - ECC/RAS error detection — warnings shown in info view with correctable/uncorrectable counts
-- PCIe bandwidth monitoring — TX/RX rates with all-time peak tracking (AMD and NVIDIA)
+
 - Static info view (press `i`): VBIOS, PCIe topology, memory vendor, driver, unique ID
 - Per-GPU focus view (press `0–9`): expand any GPU to full width
 - Arrow key navigation — cycle between overview and individual GPU focus views
@@ -20,8 +25,9 @@ A terminal UI for real-time GPU monitoring on Linux — supports AMD (ROCm), NVI
 - Scrollable GPU panel region — header and process table stay anchored when the terminal is small
 - Scrollable event log (press `l`) — rocm-smi errors and backend warnings
 - Adjustable refresh rate, pause, and force-refresh keybindings
-- **Multi-backend**: monitors AMD discrete, NVIDIA discrete, and integrated GPUs simultaneously
-- **Auto-detection**: probes for available GPU backends at startup — no configuration needed
+
+- Multi-backend: monitors AMD discrete, NVIDIA discrete, and integrated GPUs simultaneously
+- Auto-detection: probes for available GPU backends at startup — no configuration needed
 - Single static binary — no runtime dependencies beyond system GPU tools
 
 ## Supported GPUs
@@ -30,17 +36,14 @@ A terminal UI for real-time GPU monitoring on Linux — supports AMD (ROCm), NVI
 |----------|---------|-------------|
 | AMD discrete | `rocm-smi` | [ROCm](https://rocm.docs.amd.com/) installed, `rocm-smi` on `$PATH` |
 | NVIDIA discrete | `nvidia-smi` | NVIDIA drivers installed, `nvidia-smi` on `$PATH` |
-| AMD integrated (iGPU) | `sysfs` | `amdgpu` kernel driver loaded (native Linux) |
+| AMD integrated (iGPU / APU) | `sysfs` | `amdgpu` kernel driver loaded (native Linux) |
 | Intel integrated (iGPU) | `sysfs` | `i915` or `xe` kernel driver loaded (native Linux) |
 
 roctop auto-detects all available backends. On a mixed system (e.g., NVIDIA discrete + AMD iGPU), all GPUs appear together in the TUI. The header shows active backends: `[rocm]`, `[nvidia]`, `[nvidia+sysfs]`, etc.
 
 Metrics that aren't available for a given GPU are shown in dark red to distinguish "no data" from a real zero.
 
-## Requirements
-
-- Linux
-- At least one of: `rocm-smi` on PATH, `nvidia-smi` on PATH, or a GPU with sysfs/hwmon support
+Requires Linux and at least one of: `rocm-smi` on PATH, `nvidia-smi` on PATH, or a GPU with sysfs/hwmon support. No other dependencies.
 
 ## Installation
 
@@ -82,7 +85,7 @@ cd roctop
 go build -o roctop .
 ```
 
-## Running
+## Usage
 
 ```bash
 roctop
@@ -114,6 +117,16 @@ roctop --refresh 1
 | Mouse wheel | Scroll GPU panels |
 | `Esc` | Return to main metrics screen from any mode |
 
+## Data collection
+
+roctop uses three backends depending on what's available:
+
+- **ROCm** (`rocm-smi --json`): Full AMD discrete GPU metrics including VRAM, GTT memory, throttle status, PCIe link info, and static data (VBIOS, memory vendor, unique ID)
+- **NVIDIA** (`nvidia-smi --query-gpu`): CSV-based metric collection for NVIDIA GPUs including utilization, VRAM, power, temperature, clocks, and per-process VRAM usage
+- **sysfs/hwmon**: Reads directly from `/sys/class/drm/card*/device/` and hwmon interfaces for integrated GPUs — no vendor tools needed; also provides GTT memory data for APUs
+
+At startup, roctop probes ROCm and NVIDIA backends first, records which PCI bus addresses they claim, then discovers any remaining GPUs via sysfs to avoid double-counting.
+
 ## Project structure
 
 ```
@@ -128,19 +141,11 @@ roctop/
 ├── help.go          # Help panel renderer
 ├── process.go       # GPU process table
 ├── model.go         # Bubble Tea model (Init / Update / View), viewport
+├── applog.go        # In-memory event log (backend warnings, rocm-smi errors)
+├── logpanel.go      # Event log panel renderer
 ├── go.mod
 └── .goreleaser.yaml # Release config (linux amd64 + arm64 tarballs)
 ```
-
-## Data collection
-
-roctop uses three backends depending on what's available:
-
-- **ROCm** (`rocm-smi --json`): Full AMD discrete GPU metrics including throttle status, PCIe link info, and static data (VBIOS, memory vendor, unique ID)
-- **NVIDIA** (`nvidia-smi --query-gpu`): CSV-based metric collection for NVIDIA GPUs including utilization, VRAM, power, temperature, clocks, and per-process VRAM usage
-- **sysfs/hwmon**: Reads directly from `/sys/class/drm/card*/device/` and hwmon interfaces for integrated GPUs — no vendor tools needed
-
-At startup, roctop probes ROCm and NVIDIA backends first, records which PCI bus addresses they claim, then discovers any remaining GPUs via sysfs to avoid double-counting.
 
 ## License
 
