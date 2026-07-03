@@ -35,14 +35,24 @@ fi
 VERSION_NO_V="${VERSION#v}"
 TARBALL="roctop_${VERSION_NO_V}_linux_${ARCH}.tar.gz"
 URL="https://github.com/${REPO}/releases/download/${VERSION}/${TARBALL}"
+CHECKSUMS_URL="https://github.com/${REPO}/releases/download/${VERSION}/checksums.txt"
 
 echo "Installing roctop ${VERSION} (linux/${ARCH}) → ${INSTALL_DIR}/${BINARY}"
 
-# ── Download and extract ──────────────────────────────────────────────
+# ── Download, verify, and extract ─────────────────────────────────────
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
-curl -fsSL "$URL" | tar xz -C "$TMP"
+curl -fsSL -o "$TMP/$TARBALL" "$URL"
+curl -fsSL -o "$TMP/checksums.txt" "$CHECKSUMS_URL"
+
+echo "Verifying checksum..."
+(cd "$TMP" && grep " ${TARBALL}\$" checksums.txt | sha256sum -c --quiet -) || {
+    echo "error: checksum verification failed for ${TARBALL}" >&2
+    exit 1
+}
+
+tar xzf "$TMP/$TARBALL" -C "$TMP"
 
 # ── Install ───────────────────────────────────────────────────────────
 if [ -w "$INSTALL_DIR" ]; then
