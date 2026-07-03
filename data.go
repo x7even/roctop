@@ -24,8 +24,6 @@ type GpuBackend interface {
 	Name() string
 }
 
-var activeBackends []GpuBackend
-
 // ── ROCm backend ────────────────────────────────────────────────────
 
 type rocmBackend struct{}
@@ -191,9 +189,9 @@ func backendOrder(name string) int {
 	}
 }
 
-func backendNames() string {
+func backendNames(backends []GpuBackend) string {
 	var names []string
-	for _, b := range activeBackends {
+	for _, b := range backends {
 		names = append(names, b.Name())
 	}
 	return strings.Join(names, "+")
@@ -746,10 +744,10 @@ func collectStaticInfo(gpus []GpuData) {
 
 // ── Main collection entry point ──────────────────────────────────────
 
-func collectGpuData() ([]GpuData, []ProcessData) {
+func collectGpuData(backends []GpuBackend) ([]GpuData, []ProcessData) {
 	var allGpus []GpuData
 	var allProcs []ProcessData
-	for _, b := range activeBackends {
+	for _, b := range backends {
 		gpus, procs := b.CollectData()
 		allGpus = append(allGpus, gpus...)
 		allProcs = append(allProcs, procs...)

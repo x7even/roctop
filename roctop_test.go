@@ -113,11 +113,7 @@ func TestBackendOrder(t *testing.T) {
 }
 
 func TestBackendNames(t *testing.T) {
-	saved := activeBackends
-	defer func() { activeBackends = saved }()
-
-	activeBackends = []GpuBackend{&rocmBackend{}, &nvidiaBackend{}}
-	got := backendNames()
+	got := backendNames([]GpuBackend{&rocmBackend{}, &nvidiaBackend{}})
 	if got != "rocm+nvidia" {
 		t.Errorf("backendNames() = %q, want \"rocm+nvidia\"", got)
 	}
@@ -446,7 +442,7 @@ func TestRenderMetricLinesCount(t *testing.T) {
 		Mclk:        1000,
 	}
 	hist := &GpuHistory{}
-	lines := renderMetricLines(gpu, hist, 80)
+	lines := renderMetricLines(gpu, hist, 80, false)
 	// renderMetricLines returns a variable count (15 base + optional GTT/PCIe lines).
 	// renderGpuPanel pads UP TO panelLines; it never trims. So the invariant is
 	// len(lines) <= panelLines, not == panelLines.
@@ -471,7 +467,7 @@ func TestRenderMetricLinesNaNInputs(t *testing.T) {
 		TempMem:     math.NaN(),
 	}
 	hist := &GpuHistory{}
-	lines := renderMetricLines(gpu, hist, 80)
+	lines := renderMetricLines(gpu, hist, 80, false)
 	if len(lines) > panelLines {
 		t.Errorf("renderMetricLines (all-NaN) returned %d lines, want at most %d", len(lines), panelLines)
 	}
@@ -544,14 +540,14 @@ func TestHeaderLogCount(t *testing.T) {
 	logMu.Unlock()
 
 	// No entries — hint should just say "l:log"
-	h := renderHeader(4, 2.0, false, false, false, false, false, -1, 200)
+	h := renderHeader(4, "", 2.0, false, false, false, false, false, -1, 200)
 	if !strings.Contains(h, "l") {
 		t.Error("header should contain l keybinding")
 	}
 
 	logf("an error occurred")
 	// renderHeader(gpuCount, refreshSecs, paused, infoMode, helpMode, logMode, dataStale, width)
-	h = renderHeader(4, 2.0, false, false, false, false, false, -1, 200)
+	h = renderHeader(4, "", 2.0, false, false, false, false, false, -1, 200)
 	if !strings.Contains(h, "log(1)") {
 		t.Errorf("header should show log(1) when there is 1 entry, got: %s", h)
 	}
@@ -562,12 +558,12 @@ func TestHeaderLogCount(t *testing.T) {
 func TestHeaderStaleIndicator(t *testing.T) {
 	// Stale flag should appear in the header when dataStale is true.
 	// renderHeader(gpuCount, refreshSecs, paused, infoMode, helpMode, logMode, dataStale, width)
-	withStale := renderHeader(4, 2.0, false, false, false, false, true, -1, 200)
+	withStale := renderHeader(4, "", 2.0, false, false, false, false, true, -1, 200)
 	if !strings.Contains(withStale, "STALE") {
 		t.Error("header with dataStale=true should contain 'STALE'")
 	}
 	// No stale indicator when data is fresh.
-	withoutStale := renderHeader(4, 2.0, false, false, false, false, false, -1, 200)
+	withoutStale := renderHeader(4, "", 2.0, false, false, false, false, false, -1, 200)
 	if strings.Contains(withoutStale, "STALE") {
 		t.Error("header with dataStale=false should not contain 'STALE'")
 	}
@@ -575,7 +571,7 @@ func TestHeaderStaleIndicator(t *testing.T) {
 
 func TestDataMsgEmptyPreservesGpus(t *testing.T) {
 	// An empty dataMsg (failed fetch) must not clear existing GPU data.
-	m := newModel(2 * time.Second)
+	m := newModel(2*time.Second, nil)
 	m.gpus = []GpuData{{CardID: 0, Backend: "rocm", Name: "Test GPU"}}
 
 	// Simulate a failed fetch arriving as an empty dataMsg.
@@ -592,7 +588,7 @@ func TestDataMsgEmptyPreservesGpus(t *testing.T) {
 
 func TestDataMsgSuccessClearsStale(t *testing.T) {
 	// A successful fetch must clear the stale flag.
-	m := newModel(2 * time.Second)
+	m := newModel(2*time.Second, nil)
 	m.dataStale = true
 	m.gpus = []GpuData{{CardID: 0, Backend: "rocm", Name: "Old GPU"}}
 
@@ -732,7 +728,7 @@ func TestRenderMetricLinesTitleNoECC(t *testing.T) {
 		RasUncorrectable: 3145680,
 	}
 	hist := &GpuHistory{}
-	lines := renderMetricLines(gpu, hist, 80)
+	lines := renderMetricLines(gpu, hist, 80, false)
 	title := lines[0]
 	if strings.Contains(title, "ECC") {
 		t.Errorf("metrics title should not show ECC warning (info panel only), got: %s", title)
@@ -748,7 +744,7 @@ func TestRenderInfoLinesECCRow(t *testing.T) {
 		RasCorrectable:   10,
 		RasUncorrectable: 3145680,
 	}
-	lines := renderInfoLines(gpu, 80)
+	lines := renderInfoLines(gpu, 80, false)
 	// Join all lines to search for ECC content
 	out := strings.Join(lines, "\n")
 	if !strings.Contains(out, "ECC") {
@@ -847,7 +843,7 @@ func TestFocusModeOutOfRangeIgnored(t *testing.T) {
 }
 
 func TestFocusModeHeaderIndicator(t *testing.T) {
-	h := renderHeader(4, 2.0, false, false, false, false, false, 1, 200)
+	h := renderHeader(4, "", 2.0, false, false, false, false, false, 1, 200)
 	if !strings.Contains(h, "FOCUS") {
 		t.Errorf("header should show FOCUS indicator when focusIdx >= 0, got: %s", h)
 	}
@@ -857,7 +853,7 @@ func TestFocusModeHeaderIndicator(t *testing.T) {
 }
 
 func TestNoFocusModeHeaderNoIndicator(t *testing.T) {
-	h := renderHeader(4, 2.0, false, false, false, false, false, -1, 200)
+	h := renderHeader(4, "", 2.0, false, false, false, false, false, -1, 200)
 	if strings.Contains(h, "FOCUS") {
 		t.Errorf("header should not show FOCUS when focusIdx == -1, got: %s", h)
 	}
@@ -902,7 +898,7 @@ func TestEscFromLogMode(t *testing.T) {
 // ── adaptive layout ──────────────────────────────────────────────────
 
 func gpuModel(gpuCount, width int) model {
-	m := newModel(2 * time.Second)
+	m := newModel(2*time.Second, nil)
 	m.width = width
 	m.height = 50
 	for i := 0; i < gpuCount; i++ {
@@ -1227,7 +1223,7 @@ func TestPciePanelLineAbsentWhenNoData(t *testing.T) {
 		PcieRxMBps: math.NaN(),
 		PowerMax:   300,
 	}
-	lines := renderMetricLines(gpu, &GpuHistory{}, 80)
+	lines := renderMetricLines(gpu, &GpuHistory{}, 80, false)
 	for _, line := range lines {
 		if strings.Contains(line, "PCIE") || strings.Contains(line, "PEAK") {
 			t.Errorf("no PCIE/PEAK line should appear when data is unavailable, got %q", line)
@@ -1246,7 +1242,7 @@ func TestPciePanelLineTxRxSingleLine(t *testing.T) {
 		PcieRxMBps: 128.0,
 		PowerMax:   300,
 	}
-	lines := renderMetricLines(gpu, hist, 80)
+	lines := renderMetricLines(gpu, hist, 80, false)
 	last := lines[len(lines)-1]
 	if !strings.Contains(last, "PCIE") || !strings.Contains(last, "PEAK") {
 		t.Errorf("wide panel should have PCIE and PEAK on one line, got %q", last)
@@ -1267,7 +1263,7 @@ func TestPciePanelLineTxRxTwoLines(t *testing.T) {
 		PcieRxMBps: 128.0,
 		PowerMax:   300,
 	}
-	lines := renderMetricLines(gpu, hist, 30)
+	lines := renderMetricLines(gpu, hist, 30, false)
 	found := 0
 	for _, line := range lines {
 		if strings.Contains(line, "PCIE") {
@@ -1292,7 +1288,7 @@ func TestPciePanelLineCombinedOnly(t *testing.T) {
 		PcieRxMBps: math.NaN(),
 		PowerMax:   300,
 	}
-	lines := renderMetricLines(gpu, hist, 80)
+	lines := renderMetricLines(gpu, hist, 80, false)
 	last := lines[len(lines)-1]
 	if !strings.Contains(last, "BW") || !strings.Contains(last, "PEAK") {
 		t.Errorf("combined line should contain BW and PEAK, got %q", last)

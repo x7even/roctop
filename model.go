@@ -30,6 +30,7 @@ type dataMsg struct {
 }
 
 type model struct {
+	backends      []GpuBackend
 	gpus          []GpuData
 	procs         []ProcessData
 	histories     map[string]*GpuHistory
@@ -54,8 +55,9 @@ type model struct {
 	lastDataTime time.Time
 }
 
-func newModel(interval time.Duration) model {
+func newModel(interval time.Duration, backends []GpuBackend) model {
 	return model{
+		backends:     backends,
 		histories:    make(map[string]*GpuHistory),
 		interval:     interval,
 		focusIdx:     -1,
@@ -103,9 +105,11 @@ func carryStaticFields(from, to *GpuData) {
 
 type staticInfoMsg []GpuData
 
-func fetchDataCmd() tea.Msg {
-	gpus, procs := collectGpuData()
-	return dataMsg{gpus: gpus, procs: procs}
+func fetchDataCmd(backends []GpuBackend) tea.Cmd {
+	return func() tea.Msg {
+		gpus, procs := collectGpuData(backends)
+		return dataMsg{gpus: gpus, procs: procs}
+	}
 }
 
 func fetchStaticInfoCmd(gpus []GpuData) tea.Cmd {
@@ -156,10 +160,12 @@ func (m model) renderGpuContent() string {
 		return "\n  " + dimStyle.Render("Waiting for GPU data...")
 	}
 
+	showBackendTag := len(m.backends) > 1
+
 	// Focus mode: single GPU at full width.
 	if m.focusIdx >= 0 && m.focusIdx < len(m.gpus) {
 		gpu := m.gpus[m.focusIdx]
-		return renderGpuPanel(gpu, m.getHist(gpu.HistKey()), m.width, m.infoMode)
+		return renderGpuPanel(gpu, m.getHist(gpu.HistKey()), m.width, m.infoMode, showBackendTag)
 	}
 
 	twoCol := len(m.gpus) > 1 && m.width/2 >= minColWidth
@@ -169,17 +175,17 @@ func (m model) renderGpuContent() string {
 		halfWidth := m.width / 2
 		for i := 0; i < len(m.gpus); i += 2 {
 			if i+1 < len(m.gpus) {
-				left := renderGpuPanel(m.gpus[i], m.getHist(m.gpus[i].HistKey()), halfWidth, m.infoMode)
-				right := renderGpuPanel(m.gpus[i+1], m.getHist(m.gpus[i+1].HistKey()), halfWidth, m.infoMode)
+				left := renderGpuPanel(m.gpus[i], m.getHist(m.gpus[i].HistKey()), halfWidth, m.infoMode, showBackendTag)
+				right := renderGpuPanel(m.gpus[i+1], m.getHist(m.gpus[i+1].HistKey()), halfWidth, m.infoMode, showBackendTag)
 				rows = append(rows, lipgloss.JoinHorizontal(lipgloss.Top, left, right))
 			} else {
 				// Odd GPU at end gets full width.
-				rows = append(rows, renderGpuPanel(m.gpus[i], m.getHist(m.gpus[i].HistKey()), m.width, m.infoMode))
+				rows = append(rows, renderGpuPanel(m.gpus[i], m.getHist(m.gpus[i].HistKey()), m.width, m.infoMode, showBackendTag))
 			}
 		}
 	} else {
 		for i := range m.gpus {
-			rows = append(rows, renderGpuPanel(m.gpus[i], m.getHist(m.gpus[i].HistKey()), m.width, m.infoMode))
+			rows = append(rows, renderGpuPanel(m.gpus[i], m.getHist(m.gpus[i].HistKey()), m.width, m.infoMode, showBackendTag))
 		}
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
@@ -197,7 +203,7 @@ func (m model) vpHeight() int {
 
 func (m model) Init() tea.Cmd {
 	return tea.Batch(
-		fetchDataCmd,
+		fetchDataCmd(m.backends),
 		tickCmd(m.interval),
 	)
 }
@@ -341,14 +347,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.paused {
 			return m, tickCmd(m.interval)
 		}
-		return m, tea.Batch(fetchDataCmd, tickCmd(m.interval))
+		return m, tea.Batch(fetchDataCmd(m.backends), tickCmd(m.interval))
 
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		case "r":
-			return m, fetchDataCmd
+			return m, fetchDataCmd(m.backends)
 		case "+", "=":
 			m.interval -= refreshStep
 			if m.interval < minRefresh {
@@ -501,7 +507,7 @@ func (m model) View() string {
 	}
 
 	intervalSecs := m.interval.Seconds()
-	header := renderHeader(len(m.gpus), intervalSecs, m.paused, m.infoMode, m.helpMode, m.logMode, m.dataStale, m.focusIdx, m.width)
+	header := renderHeader(len(m.gpus), backendNames(m.backends), intervalSecs, m.paused, m.infoMode, m.helpMode, m.logMode, m.dataStale, m.focusIdx, m.width)
 	proc := renderProcessTable(m.procs, m.width)
 
 	return lipgloss.JoinVertical(lipgloss.Left, header, m.vp.View(), proc)

@@ -19,7 +19,7 @@ var (
 	headerLog   = lipgloss.NewStyle().Background(lipgloss.Color("#0d1a2d")).Foreground(lipgloss.Color("#ff8700")).Bold(true)
 )
 
-func renderHeader(gpuCount int, refreshSecs float64, paused, infoMode, helpMode, logMode, dataStale bool, focusIdx int, width int) string {
+func renderHeader(gpuCount int, backendStr string, refreshSecs float64, paused, infoMode, helpMode, logMode, dataStale bool, focusIdx int, width int) string {
 	var sb strings.Builder
 
 	if paused {
@@ -29,7 +29,7 @@ func renderHeader(gpuCount int, refreshSecs float64, paused, infoMode, helpMode,
 		sb.WriteString(headerDim.Render(" to resume"))
 	} else {
 		sb.WriteString(headerCyan.Render("roctop"))
-		sb.WriteString(headerDim.Render(" " + version + " [" + backendNames() + "]"))
+		sb.WriteString(headerDim.Render(" " + version + " [" + backendStr + "]"))
 		sb.WriteString(headerGreen.Render(fmt.Sprintf("  %d GPU", gpuCount)))
 		if gpuCount != 1 {
 			sb.WriteString(headerGreen.Render("s"))

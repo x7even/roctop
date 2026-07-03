@@ -62,8 +62,8 @@ func main() {
 		os.Exit(0)
 	}
 
-	activeBackends = detectBackends()
-	if len(activeBackends) == 0 {
+	backends := detectBackends()
+	if len(backends) == 0 {
 		fmt.Fprintln(os.Stderr, "error: no supported GPUs found.")
 		fmt.Fprintln(os.Stderr, "roctop requires ROCm (rocm-smi), NVIDIA (nvidia-smi), or a compatible GPU in sysfs.")
 		os.Exit(1)
@@ -75,7 +75,7 @@ func main() {
 	}
 
 	p := tea.NewProgram(
-		newModel(interval),
+		newModel(interval, backends),
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
 	)

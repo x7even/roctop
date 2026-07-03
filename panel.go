@@ -29,7 +29,7 @@ var panelBorder = lipgloss.NewStyle().
 
 const panelLines = 16 // 15 base content rows + 1 blank gap; optional GTT/PCIe rows extend beyond this
 
-func renderGpuPanel(gpu GpuData, hist *GpuHistory, width int, infoMode bool) string {
+func renderGpuPanel(gpu GpuData, hist *GpuHistory, width int, infoMode bool, showBackendTag bool) string {
 	// content width = panel width - 2 (border) - 2 (padding)
 	cw := width - 4
 	if cw < 20 {
@@ -38,9 +38,9 @@ func renderGpuPanel(gpu GpuData, hist *GpuHistory, width int, infoMode bool) str
 
 	var lines []string
 	if infoMode {
-		lines = renderInfoLines(gpu, cw)
+		lines = renderInfoLines(gpu, cw, showBackendTag)
 	} else {
-		lines = renderMetricLines(gpu, hist, cw)
+		lines = renderMetricLines(gpu, hist, cw, showBackendTag)
 	}
 	for len(lines) < panelLines {
 		lines = append(lines, "")
@@ -52,7 +52,7 @@ func renderGpuPanel(gpu GpuData, hist *GpuHistory, width int, infoMode bool) str
 
 // ── Metrics view ──────────────────────────────────────────────────────
 
-func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
+func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int, showBackendTag bool) []string {
 	const labelW = 5
 	const pctW = 7 // " 100.0%"
 
@@ -70,7 +70,7 @@ func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
 
 	// Title
 	title := cyanStyle.Render(fmt.Sprintf("GPU %d", gpu.CardID))
-	if gpu.Backend != "" && len(activeBackends) > 1 {
+	if gpu.Backend != "" && showBackendTag {
 		title += dimStyle.Render(fmt.Sprintf(" [%s]", gpu.Backend))
 	}
 	title += " · " + boldStyle.Render(gpu.Name)
@@ -285,14 +285,14 @@ func renderMetricLines(gpu GpuData, hist *GpuHistory, cw int) []string {
 
 // ── Info view ─────────────────────────────────────────────────────────
 
-func renderInfoLines(gpu GpuData, cw int) []string {
+func renderInfoLines(gpu GpuData, cw int, showBackendTag bool) []string {
 	colW := cw/2 - 14
 	if colW < 8 {
 		colW = 8
 	}
 
 	title := cyanStyle.Render(fmt.Sprintf("GPU %d", gpu.CardID))
-	if gpu.Backend != "" && len(activeBackends) > 1 {
+	if gpu.Backend != "" && showBackendTag {
 		title += dimStyle.Render(fmt.Sprintf(" [%s]", gpu.Backend))
 	}
 	title += " · " + boldStyle.Render(gpu.Name) +
