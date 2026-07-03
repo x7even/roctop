@@ -273,9 +273,9 @@ func readPcieBwFile(pciBus string) (rx, tx int64) {
 // v1.4+ structs have content_revision >= 4 and structure_size >= 160.
 
 const (
-	gpuMetricsMinSize      = 160 // minimum size that includes pcie_bandwidth_inst
-	gpuMetricsPcieInstOff  = 152 // byte offset of pcie_bandwidth_inst (uint64, MB/s)
-	gpuMetricsNAValue      = 0xffffffffffffffff
+	gpuMetricsMinSize     = 160 // minimum size that includes pcie_bandwidth_inst
+	gpuMetricsPcieInstOff = 152 // byte offset of pcie_bandwidth_inst (uint64, MB/s)
+	gpuMetricsNAValue     = 0xffffffffffffffff
 )
 
 // readGpuMetricsBandwidth returns the instantaneous combined PCIe bandwidth

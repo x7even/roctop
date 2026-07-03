@@ -133,8 +133,8 @@ func TestNormalizePCI(t *testing.T) {
 		{"0000:06:00.0", "0000:06:00.0"},
 		{"00000000:64:00.0", "0000:64:00.0"},
 		{"  0000:01:00.0  ", "0000:01:00.0"},
-		{"0000:C3:00.0", "0000:c3:00.0"},  // rocm-smi uppercase → lowercase
-		{"0000:c3:00.0", "0000:c3:00.0"},  // sysfs already lowercase
+		{"0000:C3:00.0", "0000:c3:00.0"}, // rocm-smi uppercase → lowercase
+		{"0000:c3:00.0", "0000:c3:00.0"}, // sysfs already lowercase
 		{"", ""},
 		{"garbage", ""},
 		{"../../../etc/passwd", ""},
@@ -182,25 +182,25 @@ func TestMergeProcessesEmpty(t *testing.T) {
 
 func TestParseNvidiaGPULine(t *testing.T) {
 	fields := []string{
-		"0",                              // index
-		"NVIDIA GeForce RTX 4070",        // name
-		"45",                             // temperature.gpu
-		"3",                              // utilization.gpu
-		"12",                             // utilization.memory
-		"8188",                           // memory.total (MiB)
-		"512",                            // memory.used (MiB)
-		"65.23",                          // power.draw
-		"200.00",                         // power.limit
-		"200.00",                         // power.max_limit
-		"30",                             // fan.speed
-		"1500",                           // clocks.current.graphics
-		"810",                            // clocks.current.memory
-		"4",                              // pcie.link.gen.current
-		"16",                             // pcie.link.width.current
-		"560.35",                         // driver_version
-		"95.02.3c",                       // vbios_version
-		"P0",                             // pstate
-		"00000000:01:00.0",               // pci.bus_id
+		"0",                       // index
+		"NVIDIA GeForce RTX 4070", // name
+		"45",                      // temperature.gpu
+		"3",                       // utilization.gpu
+		"12",                      // utilization.memory
+		"8188",                    // memory.total (MiB)
+		"512",                     // memory.used (MiB)
+		"65.23",                   // power.draw
+		"200.00",                  // power.limit
+		"200.00",                  // power.max_limit
+		"30",                      // fan.speed
+		"1500",                    // clocks.current.graphics
+		"810",                     // clocks.current.memory
+		"4",                       // pcie.link.gen.current
+		"16",                      // pcie.link.width.current
+		"560.35",                  // driver_version
+		"95.02.3c",                // vbios_version
+		"P0",                      // pstate
+		"00000000:01:00.0",        // pci.bus_id
 	}
 
 	gpu := parseNvidiaGPULine(fields)
@@ -907,10 +907,10 @@ func gpuModel(gpuCount, width int) model {
 	m.height = 50
 	for i := 0; i < gpuCount; i++ {
 		m.gpus = append(m.gpus, GpuData{
-			CardID:  i,
-			Backend: "rocm",
-			Name:    fmt.Sprintf("GPU %d", i),
-			GpuUse:  50.0,
+			CardID:   i,
+			Backend:  "rocm",
+			Name:     fmt.Sprintf("GPU %d", i),
+			GpuUse:   50.0,
 			PowerAvg: 100.0,
 			PowerMax: 300.0,
 			TempJunc: 60.0,

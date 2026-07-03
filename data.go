@@ -68,9 +68,9 @@ var throttleBits = map[int]string{
 }
 
 type GpuData struct {
-	CardID  int
-	Backend string
-	Name    string
+	CardID   int
+	Backend  string
+	Name     string
 	TempEdge float64
 	TempJunc float64
 	TempMem  float64
@@ -131,9 +131,9 @@ type GpuData struct {
 }
 
 type ProcessData struct {
-	PID     int
-	Name    string
-	GpuIDs  []int
+	PID      int
+	Name     string
+	GpuIDs   []int
 	VramUsed int64
 }
 

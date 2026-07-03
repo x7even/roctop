@@ -56,9 +56,9 @@ type model struct {
 
 func newModel(interval time.Duration) model {
 	return model{
-		histories: make(map[string]*GpuHistory),
-		interval:  interval,
-		focusIdx:  -1,
+		histories:    make(map[string]*GpuHistory),
+		interval:     interval,
+		focusIdx:     -1,
 		pciePrev:     make(map[string][2]int64),
 		pcieBwLogged: make(map[string]bool),
 	}
