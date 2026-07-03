@@ -1,6 +1,7 @@
 # Go binaries
 /roctop
 /roctop-bin
+/roctop-dev
 dist/
 
 # Editor / OS
