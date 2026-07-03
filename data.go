@@ -466,17 +466,32 @@ func parseProcesses(system map[string]interface{}) []ProcessData {
 
 // ── Supplemental data collectors ─────────────────────────────────────
 
-func applyMetrics(gpus []GpuData) {
-	data := runJSON("--showmetrics")
-	if data == nil {
-		return
-	}
-
+// cardIndexByID maps CardID -> index into gpus for all GPUs in the slice.
+func cardIndexByID(gpus []GpuData) map[int]int {
 	byID := make(map[int]int)
 	for i, g := range gpus {
 		byID[g.CardID] = i
 	}
+	return byID
+}
 
+// rocmCardIndexByID maps CardID -> index into gpus, keyed only by ROCm GPUs.
+// rocm-smi card keys are CardID-only and other backends can share the same
+// CardID integers, so mixing backends would populate the wrong GPU struct.
+func rocmCardIndexByID(gpus []GpuData) map[int]int {
+	byID := make(map[int]int)
+	for i, g := range gpus {
+		if g.Backend == "rocm" {
+			byID[g.CardID] = i
+		}
+	}
+	return byID
+}
+
+// forEachCard iterates rocm-smi JSON output, calling fn for each "cardN" key
+// whose CardID is present in byID, passing the mapped gpus index and the
+// card's value as a map.
+func forEachCard(data map[string]interface{}, byID map[int]int, fn func(idx int, d map[string]interface{})) {
 	for key, val := range data {
 		if !strings.HasPrefix(strings.ToLower(key), "card") {
 			continue
@@ -493,7 +508,17 @@ func applyMetrics(gpus []GpuData) {
 		if !ok {
 			continue
 		}
+		fn(idx, d)
+	}
+}
 
+func applyMetrics(gpus []GpuData) {
+	data := runJSON("--showmetrics")
+	if data == nil {
+		return
+	}
+
+	forEachCard(data, cardIndexByID(gpus), func(idx int, d map[string]interface{}) {
 		ts := getString(d, "throttle_status")
 		if ts == "" {
 			ts = getString(d, "Throttle status")
@@ -519,7 +544,7 @@ func applyMetrics(gpus []GpuData) {
 				gpus[idx].PcieSpeed = fmt.Sprintf("%.1fGT/s", gts)
 			}
 		}
-	}
+	})
 }
 
 var rePcieBwSent = regexp.MustCompile(`bytes_sent:\s*(\d+)`)
@@ -551,26 +576,7 @@ func applyGTT(gpus []GpuData) {
 	if data == nil {
 		return
 	}
-	byID := make(map[int]int)
-	for i, g := range gpus {
-		byID[g.CardID] = i
-	}
-	for key, val := range data {
-		if !strings.HasPrefix(strings.ToLower(key), "card") {
-			continue
-		}
-		cardID, err := strconv.Atoi(key[4:])
-		if err != nil {
-			continue
-		}
-		idx, ok := byID[cardID]
-		if !ok {
-			continue
-		}
-		d, ok := val.(map[string]interface{})
-		if !ok {
-			continue
-		}
+	forEachCard(data, cardIndexByID(gpus), func(idx int, d map[string]interface{}) {
 		total := parseInt64(getString(d, "GTT Total Memory (B)"), 0)
 		used := parseInt64(getString(d, "GTT Total Used Memory (B)"), 0)
 		if total > 0 {
@@ -578,7 +584,7 @@ func applyGTT(gpus []GpuData) {
 			gpus[idx].GttUsed = used
 			gpus[idx].GttPercent = float64(used) / float64(total) * 100
 		}
-	}
+	})
 }
 
 // applyBandwidth calls rocm-smi --showbw and populates PcieTxBytes/PcieRxBytes
@@ -589,36 +595,17 @@ func applyBandwidth(gpus []GpuData) {
 	if data == nil {
 		return
 	}
-	byID := make(map[int]int)
-	for i, g := range gpus {
-		byID[g.CardID] = i
-	}
-	for key, val := range data {
-		if !strings.HasPrefix(strings.ToLower(key), "card") {
-			continue
-		}
-		cardID, err := strconv.Atoi(key[4:])
-		if err != nil {
-			continue
-		}
-		idx, ok := byID[cardID]
-		if !ok {
-			continue
-		}
-		d, ok := val.(map[string]interface{})
-		if !ok {
-			continue
-		}
+	forEachCard(data, cardIndexByID(gpus), func(idx int, d map[string]interface{}) {
 		bwStr := getString(d, "pcie_bw")
 		if bwStr == "" {
-			continue
+			return
 		}
 		tx, rx := parsePcieBwValue(bwStr)
 		if tx >= 0 {
 			gpus[idx].PcieTxBytes = tx
 			gpus[idx].PcieRxBytes = rx
 		}
-	}
+	})
 
 	// Fallback to the kernel pcie_bw sysfs file for GPUs where rocm-smi
 	// --showbw is unsupported. The file exposes packet counts since the last
@@ -658,12 +645,7 @@ var reGPURAS = regexp.MustCompile(`^GPU\[(\d+)\]`)
 // parseRASInfo parses the text output of "rocm-smi --showrasinfo all" and
 // accumulates correctable and uncorrectable error counts into gpus in-place.
 func parseRASInfo(output string, gpus []GpuData) {
-	byID := make(map[int]int)
-	for i, g := range gpus {
-		if g.Backend == "rocm" {
-			byID[g.CardID] = i
-		}
-	}
+	byID := rocmCardIndexByID(gpus)
 
 	currentIdx := -1
 	for _, line := range strings.Split(output, "\n") {
@@ -714,64 +696,24 @@ func collectRASInfo(gpus []GpuData) {
 }
 
 func collectStaticInfo(gpus []GpuData) {
-	// Key only ROCm GPUs by CardID. The rocm-smi calls below return keys
-	// like "card0"/"card3" which are CardID-only. Other backends can share
-	// the same CardID integers, so mixing them here would cause the wrong
-	// GPU struct to be populated.
-	byID := make(map[int]int)
-	for i, g := range gpus {
-		if g.Backend == "rocm" {
-			byID[g.CardID] = i
-		}
-	}
+	// Key only ROCm GPUs by CardID: the rocm-smi calls below return keys
+	// like "card0"/"card3" which are CardID-only.
+	byID := rocmCardIndexByID(gpus)
 
 	// VBIOS
-	for key, val := range runJSON("--showvbios") {
-		if !strings.HasPrefix(strings.ToLower(key), "card") {
-			continue
-		}
-		cardID, err := strconv.Atoi(key[4:])
-		if err != nil {
-			continue
-		}
-		if idx, ok := byID[cardID]; ok {
-			if d, ok := val.(map[string]interface{}); ok {
-				gpus[idx].Vbios = strings.TrimSpace(getString(d, "VBIOS version"))
-			}
-		}
-	}
+	forEachCard(runJSON("--showvbios"), byID, func(idx int, d map[string]interface{}) {
+		gpus[idx].Vbios = strings.TrimSpace(getString(d, "VBIOS version"))
+	})
 
 	// Memory vendor
-	for key, val := range runJSON("--showmemvendor") {
-		if !strings.HasPrefix(strings.ToLower(key), "card") {
-			continue
-		}
-		cardID, err := strconv.Atoi(key[4:])
-		if err != nil {
-			continue
-		}
-		if idx, ok := byID[cardID]; ok {
-			if d, ok := val.(map[string]interface{}); ok {
-				gpus[idx].MemVendor = strings.TrimSpace(getString(d, "GPU memory vendor"))
-			}
-		}
-	}
+	forEachCard(runJSON("--showmemvendor"), byID, func(idx int, d map[string]interface{}) {
+		gpus[idx].MemVendor = strings.TrimSpace(getString(d, "GPU memory vendor"))
+	})
 
 	// Unique ID
-	for key, val := range runJSON("--showuniqueid") {
-		if !strings.HasPrefix(strings.ToLower(key), "card") {
-			continue
-		}
-		cardID, err := strconv.Atoi(key[4:])
-		if err != nil {
-			continue
-		}
-		if idx, ok := byID[cardID]; ok {
-			if d, ok := val.(map[string]interface{}); ok {
-				gpus[idx].UniqueID = strings.TrimSpace(getString(d, "Unique ID"))
-			}
-		}
-	}
+	forEachCard(runJSON("--showuniqueid"), byID, func(idx int, d map[string]interface{}) {
+		gpus[idx].UniqueID = strings.TrimSpace(getString(d, "Unique ID"))
+	})
 
 	// PCIe root port
 	for i := range gpus {
