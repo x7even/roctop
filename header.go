@@ -8,7 +8,6 @@ import (
 )
 
 var (
-	headerBg    = lipgloss.NewStyle().Background(lipgloss.Color("#0d1a2d")).Foreground(lipgloss.Color("#a0c8e8"))
 	headerCyan  = lipgloss.NewStyle().Background(lipgloss.Color("#0d1a2d")).Foreground(lipgloss.Color("#00d7ff")).Bold(true)
 	headerGreen = lipgloss.NewStyle().Background(lipgloss.Color("#0d1a2d")).Foreground(lipgloss.Color("#00d700"))
 	headerDim   = lipgloss.NewStyle().Background(lipgloss.Color("#0d1a2d")).Foreground(lipgloss.Color("#a0c8e8")).Faint(true)

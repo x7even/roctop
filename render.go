@@ -131,24 +131,6 @@ func renderBar(value, maximum float64, width int, grad gradient) string {
 
 // ── Braille sparkline renderer ────────────────────────────────────────
 
-func normalizeLevel(value, vmin, vmax float64) int {
-	if vmax <= vmin {
-		return 0
-	}
-	t := (value - vmin) / (vmax - vmin)
-	if t <= 0 {
-		return 0
-	}
-	level := int(t * 4.9)
-	if level < 1 {
-		level = 1
-	}
-	if level > 4 {
-		level = 4
-	}
-	return level
-}
-
 func normalizeToLevels(value, vmin, vmax float64, total int) int {
 	if vmax <= vmin || value <= vmin {
 		return 0
