@@ -320,7 +320,9 @@ func TestReadFloatFileNaN(t *testing.T) {
 	}
 
 	tmp := t.TempDir() + "/val"
-	writeTestFile(tmp, "42.5\n")
+	if err := writeTestFile(tmp, "42.5\n"); err != nil {
+		t.Fatal(err)
+	}
 	got = readFloatFileNaN(tmp)
 	if got != 42.5 {
 		t.Errorf("readFloatFileNaN = %f, want 42.5", got)
@@ -334,7 +336,9 @@ func TestReadInt64File(t *testing.T) {
 	}
 
 	tmp := t.TempDir() + "/val"
-	writeTestFile(tmp, "1073741824\n")
+	if err := writeTestFile(tmp, "1073741824\n"); err != nil {
+		t.Fatal(err)
+	}
 	got = readInt64File(tmp, 0)
 	if got != 1073741824 {
 		t.Errorf("readInt64File = %d, want 1073741824", got)

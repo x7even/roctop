@@ -427,16 +427,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "left":
 			if len(m.gpus) > 0 {
-				if m.focusIdx == -1 {
+				switch m.focusIdx {
+				case -1:
 					// Overview → focus last GPU
 					m.gpuVpOffset = m.vp.YOffset
 					m.focusIdx = len(m.gpus) - 1
 					m.helpMode = false
 					m.logMode = false
-				} else if m.focusIdx == 0 {
+				case 0:
 					// First GPU → back to overview
 					m.focusIdx = -1
-				} else {
+				default:
 					m.focusIdx--
 				}
 				if m.vpReady {
