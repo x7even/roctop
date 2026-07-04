@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"testing"
@@ -1464,4 +1465,384 @@ func TestPciePanelLineCombinedOnly(t *testing.T) {
 
 func writeTestFile(path, content string) error {
 	return os.WriteFile(path, []byte(content), 0644)
+}
+
+// ── AMD sysfs shared metric reader ──────────────────────────────────
+
+// buildGpuMetricsV13 constructs a synthetic 120-byte gpu_metrics blob
+// (format_revision=1, content_revision=3) with the given umc activity at
+// offset 18 and throttle status at offset 68.
+func buildGpuMetricsV13(umc uint16, throttle uint32) []byte {
+	buf := make([]byte, 120)
+	buf[0] = 120 // structure_size lo
+	buf[1] = 0   // structure_size hi
+	buf[2] = 1   // format_revision
+	buf[3] = 3   // content_revision
+	buf[18] = byte(umc)
+	buf[19] = byte(umc >> 8)
+	buf[68] = byte(throttle)
+	buf[69] = byte(throttle >> 8)
+	buf[70] = byte(throttle >> 16)
+	buf[71] = byte(throttle >> 24)
+	return buf
+}
+
+// writeAmdSysfsFixture builds a fake /sys/class/drm/cardN/device tree in dir
+// with a full complement of amdgpu metric files.
+func writeAmdSysfsFixture(t *testing.T, dir string) amdSysfsDev {
+	t.Helper()
+	hwmon := dir + "/hwmon/hwmon3"
+	if err := os.MkdirAll(hwmon, 0755); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{
+		"/gpu_busy_percent":                  "83\n",
+		"/mem_busy_percent":                  "42\n",
+		"/mem_info_vram_total":               "34208743424\n",
+		"/mem_info_vram_used":                "17104371712\n",
+		"/mem_info_gtt_total":                "100951101440\n",
+		"/mem_info_gtt_used":                 "64061440\n",
+		"/pp_dpm_sclk":                       "0: 500Mhz\n1: 2400Mhz *\n",
+		"/pp_dpm_mclk":                       "0: 96Mhz\n1: 1258Mhz *\n",
+		"/power_dpm_force_performance_level": "manual\n",
+		"/current_link_speed":                "16.0 GT/s PCIe\n",
+		"/current_link_width":                "16\n",
+		"/hwmon/hwmon3/temp1_input":          "67000\n",
+		"/hwmon/hwmon3/temp1_label":          "edge\n",
+		"/hwmon/hwmon3/temp2_input":          "74000\n",
+		"/hwmon/hwmon3/temp2_label":          "junction\n",
+		"/hwmon/hwmon3/temp3_input":          "68000\n",
+		"/hwmon/hwmon3/temp3_label":          "mem\n",
+		"/hwmon/hwmon3/power1_average":       "98000000\n",
+		"/hwmon/hwmon3/power1_cap":           "300000000\n",
+		"/hwmon/hwmon3/fan1_input":           "1376\n",
+		"/hwmon/hwmon3/pwm1":                 "68\n",
+		"/hwmon/hwmon3/in0_input":            "1175\n",
+	}
+	for name, content := range files {
+		if err := writeTestFile(dir+name, content); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(dir+"/gpu_metrics", buildGpuMetricsV13(37, 1<<1), 0644); err != nil {
+		t.Fatal(err)
+	}
+	return amdSysfsDev{deviceDir: dir, hwmonDir: hwmon}
+}
+
+func TestCollectAmdSysfsMetricsFull(t *testing.T) {
+	dev := writeAmdSysfsFixture(t, t.TempDir())
+	gpu := newGpuData(0, "rocm")
+	collectAmdSysfsMetrics(&gpu, dev)
+
+	if gpu.GpuUse != 83 {
+		t.Errorf("GpuUse want 83 got %v", gpu.GpuUse)
+	}
+	if gpu.MemActivity != 42 {
+		t.Errorf("MemActivity want 42 got %v", gpu.MemActivity)
+	}
+	if gpu.UmcActivity != 37 {
+		t.Errorf("UmcActivity want 37 got %v", gpu.UmcActivity)
+	}
+	if gpu.VramTotal != 34208743424 || gpu.VramUsed != 17104371712 {
+		t.Errorf("VRAM want 34208743424/17104371712 got %d/%d", gpu.VramTotal, gpu.VramUsed)
+	}
+	if gpu.VramPercent < 49.9 || gpu.VramPercent > 50.1 {
+		t.Errorf("VramPercent want ~50 got %v", gpu.VramPercent)
+	}
+	if gpu.GttTotal != 100951101440 || gpu.GttUsed != 64061440 {
+		t.Errorf("GTT want 100951101440/64061440 got %d/%d", gpu.GttTotal, gpu.GttUsed)
+	}
+	if gpu.Sclk != 2400 || gpu.Mclk != 1258 {
+		t.Errorf("clocks want 2400/1258 got %d/%d", gpu.Sclk, gpu.Mclk)
+	}
+	if gpu.PerfLevel != "manual" {
+		t.Errorf("PerfLevel want manual got %q", gpu.PerfLevel)
+	}
+	if gpu.PcieSpeed != "16.0GT/s" {
+		t.Errorf("PcieSpeed want 16.0GT/s got %q", gpu.PcieSpeed)
+	}
+	if gpu.PcieWidth != 16 {
+		t.Errorf("PcieWidth want 16 got %d", gpu.PcieWidth)
+	}
+	if gpu.TempEdge != 67 || gpu.TempJunc != 74 || gpu.TempMem != 68 {
+		t.Errorf("temps want 67/74/68 got %v/%v/%v", gpu.TempEdge, gpu.TempJunc, gpu.TempMem)
+	}
+	if gpu.PowerAvg != 98 {
+		t.Errorf("PowerAvg want 98 got %v", gpu.PowerAvg)
+	}
+	if gpu.PowerMax != 300 {
+		t.Errorf("PowerMax want 300 got %v", gpu.PowerMax)
+	}
+	if gpu.FanRPM != 1376 {
+		t.Errorf("FanRPM want 1376 got %d", gpu.FanRPM)
+	}
+	if gpu.FanPercent < 26.6 || gpu.FanPercent > 26.8 {
+		t.Errorf("FanPercent want ~26.7 got %v", gpu.FanPercent)
+	}
+	if gpu.Voltage != 1175 {
+		t.Errorf("Voltage want 1175 got %v", gpu.Voltage)
+	}
+	if gpu.ThrottleStatus != 2 {
+		t.Errorf("ThrottleStatus want 2 got %d", gpu.ThrottleStatus)
+	}
+	if len(gpu.ThrottleReasons) != 1 || gpu.ThrottleReasons[0] != "THERMAL" {
+		t.Errorf("ThrottleReasons want [THERMAL] got %v", gpu.ThrottleReasons)
+	}
+	// v1.3 blob has no pcie_bandwidth_inst and there is no pcie_bw file.
+	if !math.IsNaN(gpu.PcieTxMBps) || gpu.PcieBwTxDelta != -1 {
+		t.Errorf("PCIe BW should be unavailable, got %v / %d", gpu.PcieTxMBps, gpu.PcieBwTxDelta)
+	}
+}
+
+func TestCollectAmdSysfsMetricsMissingFiles(t *testing.T) {
+	dev := amdSysfsDev{deviceDir: t.TempDir()}
+	gpu := newGpuData(1, "rocm")
+	collectAmdSysfsMetrics(&gpu, dev)
+
+	if !math.IsNaN(gpu.GpuUse) || !math.IsNaN(gpu.MemActivity) {
+		t.Errorf("missing files should leave NaN, got %v/%v", gpu.GpuUse, gpu.MemActivity)
+	}
+	if !math.IsNaN(gpu.TempEdge) || !math.IsNaN(gpu.TempJunc) || !math.IsNaN(gpu.TempMem) {
+		t.Errorf("missing hwmon should leave temps NaN")
+	}
+	if !math.IsNaN(gpu.PowerAvg) || !math.IsNaN(gpu.PowerMax) {
+		t.Errorf("missing hwmon should leave power NaN")
+	}
+	if gpu.VramTotal != 0 || gpu.GttTotal != 0 || gpu.Sclk != 0 || gpu.Mclk != 0 {
+		t.Errorf("missing files should leave zero memory/clocks")
+	}
+	if gpu.PerfLevel != "" || gpu.PcieSpeed != "" || gpu.PcieWidth != 0 {
+		t.Errorf("missing files should leave empty PCIe/perf fields")
+	}
+	if gpu.ThrottleStatus != 0 || gpu.UmcActivity != 0 {
+		t.Errorf("missing gpu_metrics should leave throttle/umc zero")
+	}
+}
+
+func TestReadHwmonTempsLabelMapping(t *testing.T) {
+	dir := t.TempDir()
+	// Deliberately shuffled: temp1=junction, temp2=mem, temp3=edge.
+	files := map[string]string{
+		"temp1_input": "90000", "temp1_label": "junction",
+		"temp2_input": "80000", "temp2_label": "mem",
+		"temp3_input": "70000", "temp3_label": "edge",
+	}
+	for name, content := range files {
+		if err := writeTestFile(dir+"/"+name, content); err != nil {
+			t.Fatal(err)
+		}
+	}
+	edge, junc, mem := readHwmonTemps(dir)
+	if edge != 70 || junc != 90 || mem != 80 {
+		t.Errorf("want edge=70 junc=90 mem=80, got %v/%v/%v", edge, junc, mem)
+	}
+}
+
+func TestReadHwmonTempsPositionalFallback(t *testing.T) {
+	dir := t.TempDir()
+	if err := writeTestFile(dir+"/temp1_input", "55000"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeTestFile(dir+"/temp2_input", "65000"); err != nil {
+		t.Fatal(err)
+	}
+	edge, junc, mem := readHwmonTemps(dir)
+	if edge != 55 || junc != 65 {
+		t.Errorf("positional fallback want edge=55 junc=65, got %v/%v", edge, junc)
+	}
+	if !math.IsNaN(mem) {
+		t.Errorf("missing temp3 should be NaN, got %v", mem)
+	}
+}
+
+func TestReadHwmonMetricsEdgeOnlyMirrorsJunction(t *testing.T) {
+	dir := t.TempDir()
+	if err := writeTestFile(dir+"/temp1_input", "51000"); err != nil {
+		t.Fatal(err)
+	}
+	gpu := newGpuData(0, "sysfs")
+	readHwmonMetrics(&gpu, dir)
+	if gpu.TempEdge != 51 || gpu.TempJunc != 51 {
+		t.Errorf("edge-only sensor should mirror junction, got e=%v j=%v", gpu.TempEdge, gpu.TempJunc)
+	}
+}
+
+func TestReadHwmonMetricsPowerInputFallback(t *testing.T) {
+	dir := t.TempDir()
+	if err := writeTestFile(dir+"/power1_input", "15000000"); err != nil {
+		t.Fatal(err)
+	}
+	gpu := newGpuData(0, "sysfs")
+	readHwmonMetrics(&gpu, dir)
+	if gpu.PowerAvg != 15 {
+		t.Errorf("power1_input fallback want 15W got %v", gpu.PowerAvg)
+	}
+}
+
+func TestParseLinkSpeed(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"16.0 GT/s PCIe", "16.0GT/s"},
+		{"32.0 GT/s PCIe", "32.0GT/s"},
+		{"2.5 GT/s PCIe", "2.5GT/s"},
+		{"", ""},
+		{"Unknown", ""},
+	}
+	for _, tt := range tests {
+		if got := parseLinkSpeed(tt.input); got != tt.want {
+			t.Errorf("parseLinkSpeed(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestReadGpuMetricsFieldsV13(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(dir+"/gpu_metrics", buildGpuMetricsV13(55, 0x30001), 0644); err != nil {
+		t.Fatal(err)
+	}
+	umc, throttle := readGpuMetricsFields(dir)
+	if umc != 55 {
+		t.Errorf("umc want 55 got %v", umc)
+	}
+	if throttle != 0x30001 {
+		t.Errorf("throttle want 0x30001 got %#x", throttle)
+	}
+}
+
+func TestReadGpuMetricsFieldsNASentinels(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(dir+"/gpu_metrics", buildGpuMetricsV13(0xffff, 0xffffffff), 0644); err != nil {
+		t.Fatal(err)
+	}
+	umc, throttle := readGpuMetricsFields(dir)
+	if umc != 0 || throttle != 0 {
+		t.Errorf("N/A sentinels should map to zero, got %v/%d", umc, throttle)
+	}
+}
+
+func TestReadGpuMetricsFieldsBadHeader(t *testing.T) {
+	dir := t.TempDir()
+	blob := buildGpuMetricsV13(55, 7)
+	blob[0] = 99 // structure_size does not match actual length
+	if err := os.WriteFile(dir+"/gpu_metrics", blob, 0644); err != nil {
+		t.Fatal(err)
+	}
+	umc, throttle := readGpuMetricsFields(dir)
+	if umc != 0 || throttle != 0 {
+		t.Errorf("bad header should yield zeros, got %v/%d", umc, throttle)
+	}
+}
+
+func TestReadGpuMetricsFieldsMissing(t *testing.T) {
+	umc, throttle := readGpuMetricsFields(t.TempDir())
+	if umc != 0 || throttle != 0 {
+		t.Errorf("missing blob should yield zeros, got %v/%d", umc, throttle)
+	}
+}
+
+func TestFindAmdSysfsDev(t *testing.T) {
+	root := t.TempDir()
+	deviceDir := root + "/card0/device"
+	hwmonDir := deviceDir + "/hwmon/hwmon2"
+	if err := os.MkdirAll(hwmonDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeTestFile(deviceDir+"/uevent", "DRIVER=amdgpu\nPCI_SLOT_NAME=0000:c3:00.0\n"); err != nil {
+		t.Fatal(err)
+	}
+
+	// rocm-smi reports uppercase hex; matching must be case-insensitive.
+	dev := findAmdSysfsDev(root, "0000:C3:00.0")
+	if dev.deviceDir != deviceDir {
+		t.Errorf("deviceDir want %q got %q", deviceDir, dev.deviceDir)
+	}
+	if dev.hwmonDir != hwmonDir {
+		t.Errorf("hwmonDir want %q got %q", hwmonDir, dev.hwmonDir)
+	}
+	if dev.pciBus != "0000:c3:00.0" {
+		t.Errorf("pciBus should be normalized, got %q", dev.pciBus)
+	}
+
+	// Unmatched bus → empty deviceDir (caller falls back to rocm-smi).
+	if dev := findAmdSysfsDev(root, "0000:03:00.0"); dev.deviceDir != "" {
+		t.Errorf("unmatched PCI bus should yield empty deviceDir, got %q", dev.deviceDir)
+	}
+
+	// Empty/garbage bus → empty deviceDir.
+	if dev := findAmdSysfsDev(root, ""); dev.deviceDir != "" {
+		t.Errorf("empty PCI bus should yield empty deviceDir")
+	}
+}
+
+func TestNewGpuDataDefaults(t *testing.T) {
+	g := newGpuData(3, "rocm")
+	if g.CardID != 3 || g.Backend != "rocm" {
+		t.Errorf("identity fields wrong: %d %q", g.CardID, g.Backend)
+	}
+	for name, v := range map[string]float64{
+		"GpuUse": g.GpuUse, "MemActivity": g.MemActivity,
+		"TempEdge": g.TempEdge, "TempJunc": g.TempJunc, "TempMem": g.TempMem,
+		"PowerAvg": g.PowerAvg, "PowerMax": g.PowerMax,
+		"PcieTxMBps": g.PcieTxMBps, "PcieRxMBps": g.PcieRxMBps,
+	} {
+		if !math.IsNaN(v) {
+			t.Errorf("%s should default to NaN, got %v", name, v)
+		}
+	}
+	for name, v := range map[string]int64{
+		"PcieTxBytes": g.PcieTxBytes, "PcieRxBytes": g.PcieRxBytes,
+		"PcieBwTxDelta": g.PcieBwTxDelta, "PcieBwRxDelta": g.PcieBwRxDelta,
+	} {
+		if v != -1 {
+			t.Errorf("%s should default to -1, got %d", name, v)
+		}
+	}
+}
+
+// ── Live hardware smoke test (skipped on GPU-less CI) ───────────────
+
+// TestLiveRocmSysfsBackend exercises the real rocm backend end-to-end on a
+// machine with rocm-smi and AMD GPUs. It is skipped everywhere else.
+func TestLiveRocmSysfsBackend(t *testing.T) {
+	if _, err := exec.LookPath("rocm-smi"); err != nil {
+		t.Skip("rocm-smi not installed")
+	}
+	b := newRocmBackend()
+	if len(b.cards) == 0 {
+		t.Skip("rocm-smi reported no GPUs")
+	}
+	if !b.sysfsMode {
+		t.Skip("GPUs not mapped to sysfs on this machine")
+	}
+	gpus, _ := b.CollectData()
+	if len(gpus) != len(b.cards) {
+		t.Fatalf("want %d GPUs, got %d", len(b.cards), len(gpus))
+	}
+	for _, g := range gpus {
+		if g.Backend != "rocm" {
+			t.Errorf("GPU %d backend want rocm got %q", g.CardID, g.Backend)
+		}
+		if g.Name == "" {
+			t.Errorf("GPU %d has no name", g.CardID)
+		}
+		if g.VramTotal <= 0 {
+			t.Errorf("GPU %d VramTotal not positive: %d", g.CardID, g.VramTotal)
+		}
+		if math.IsNaN(g.GpuUse) || g.GpuUse < 0 || g.GpuUse > 100 {
+			t.Errorf("GPU %d GpuUse out of range: %v", g.CardID, g.GpuUse)
+		}
+		if !math.IsNaN(g.TempJunc) && (g.TempJunc < 1 || g.TempJunc > 130) {
+			t.Errorf("GPU %d TempJunc implausible: %v", g.CardID, g.TempJunc)
+		}
+		if !math.IsNaN(g.PowerAvg) && (g.PowerAvg < 0 || g.PowerAvg > 2000) {
+			t.Errorf("GPU %d PowerAvg implausible: %v", g.CardID, g.PowerAvg)
+		}
+		t.Logf("GPU %d %s pci=%s use=%.0f%% vram=%d/%d junc=%.0fC pwr=%.0fW sclk=%d mclk=%d fan=%drpm/%.0f%% perf=%s pcie=%s x%d",
+			g.CardID, g.Name, g.PcieBus, g.GpuUse, g.VramUsed, g.VramTotal,
+			g.TempJunc, g.PowerAvg, g.Sclk, g.Mclk, g.FanRPM, g.FanPercent,
+			g.PerfLevel, g.PcieSpeed, g.PcieWidth)
+	}
 }

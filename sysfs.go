@@ -103,12 +103,9 @@ func newSysfsBackend(excludePCI map[string]bool) *sysfsBackend {
 func (s *sysfsBackend) CollectData() ([]GpuData, []ProcessData) {
 	var gpus []GpuData
 	for _, card := range s.cards {
-		gpu := GpuData{
-			CardID:  card.cardIndex,
-			Backend: "sysfs",
-			Vendor:  card.vendor,
-			PcieBus: card.pciBus,
-		}
+		gpu := newGpuData(card.cardIndex, "sysfs")
+		gpu.Vendor = card.vendor
+		gpu.PcieBus = card.pciBus
 
 		// GPU name
 		gpu.Name = readStringFile(card.deviceDir + "/product_name")
@@ -116,94 +113,19 @@ func (s *sysfsBackend) CollectData() ([]GpuData, []ProcessData) {
 			gpu.Name = card.vendor + " iGPU"
 		}
 
-		// Utilization (NaN if file missing)
-		gpu.GpuUse = readFloatFileNaN(card.deviceDir + "/gpu_busy_percent")
-
-		// Memory
-		gpu.VramTotal = readInt64File(card.deviceDir+"/mem_info_vram_total", 0)
-		gpu.VramUsed = readInt64File(card.deviceDir+"/mem_info_vram_used", 0)
-		if gpu.VramTotal > 0 {
-			gpu.VramPercent = float64(gpu.VramUsed) / float64(gpu.VramTotal) * 100
-		}
-
-		gpu.GttTotal = readInt64File(card.deviceDir+"/mem_info_gtt_total", 0)
-		gpu.GttUsed = readInt64File(card.deviceDir+"/mem_info_gtt_used", 0)
-		if gpu.GttTotal > 0 {
-			gpu.GttPercent = float64(gpu.GttUsed) / float64(gpu.GttTotal) * 100
-		}
-
-		// Clocks
-		gpu.Sclk = parseDpmFreq(card.deviceDir + "/pp_dpm_sclk")
-		gpu.Mclk = parseDpmFreq(card.deviceDir + "/pp_dpm_mclk")
+		// All dynamic metrics come from the shared sysfs reader. Files that
+		// don't exist on this vendor's driver simply leave their sentinels.
+		collectAmdSysfsMetrics(&gpu, amdSysfsDev{
+			deviceDir: card.deviceDir,
+			hwmonDir:  card.hwmonDir,
+			pciBus:    card.pciBus,
+		})
 
 		// Intel fallback for clocks
 		if card.vendor == "Intel" && gpu.Sclk == 0 {
 			v := readFloatFileNaN(card.deviceDir + "/gt/gt0/rps_cur_freq_mhz")
 			if !math.IsNaN(v) {
 				gpu.Sclk = int(v)
-			}
-		}
-
-		// hwmon metrics
-		if card.hwmonDir != "" {
-			// Temperature (millidegrees → degrees)
-			tempMilli := readFloatFileNaN(card.hwmonDir + "/temp1_input")
-			if !math.IsNaN(tempMilli) {
-				gpu.TempEdge = tempMilli / 1000
-				gpu.TempJunc = gpu.TempEdge
-			} else {
-				gpu.TempEdge = math.NaN()
-				gpu.TempJunc = math.NaN()
-			}
-
-			// Power (microwatts → watts)
-			powerMicro := readFloatFileNaN(card.hwmonDir + "/power1_average")
-			if !math.IsNaN(powerMicro) {
-				gpu.PowerAvg = powerMicro / 1_000_000
-			} else {
-				gpu.PowerAvg = math.NaN()
-			}
-			powerCapMicro := readFloatFileNaN(card.hwmonDir + "/power1_cap")
-			if !math.IsNaN(powerCapMicro) {
-				gpu.PowerMax = powerCapMicro / 1_000_000
-				if gpu.PowerMax == 0 {
-					gpu.PowerMax = math.NaN()
-				}
-			} else {
-				gpu.PowerMax = math.NaN()
-			}
-
-			// Voltage (millivolts)
-			gpu.Voltage = readFloatFile(card.hwmonDir+"/in0_input", 0)
-
-			// Fan
-			fanRPM := readFloatFileNaN(card.hwmonDir + "/fan1_input")
-			if !math.IsNaN(fanRPM) {
-				gpu.FanRPM = int(fanRPM)
-			}
-			pwm := readFloatFileNaN(card.hwmonDir + "/pwm1")
-			if !math.IsNaN(pwm) && pwm > 0 {
-				gpu.FanPercent = pwm / 255 * 100
-			}
-		} else {
-			gpu.TempEdge = math.NaN()
-			gpu.TempJunc = math.NaN()
-			gpu.PowerAvg = math.NaN()
-			gpu.PowerMax = math.NaN()
-		}
-
-		// PCIe bandwidth for the sysfs backend (AMD cards only).
-		// Priority 1: pcie_bw sysfs — TX/RX split, available on GCN-era discrete GPUs.
-		// Priority 2: gpu_metrics binary v1.4+ — combined rate, RDNA3+ discrete GPUs.
-		// Integrated/APU hardware typically has neither.
-		gpu.PcieBwTxDelta = -1
-		gpu.PcieBwRxDelta = -1
-		if card.vendor == "AMD" {
-			if rx, tx := readPcieBwFile(card.pciBus); rx >= 0 {
-				gpu.PcieBwRxDelta = rx
-				gpu.PcieBwTxDelta = tx
-			} else if bw := readGpuMetricsBandwidth(card.deviceDir); !math.IsNaN(bw) {
-				gpu.PcieTxMBps = bw // combined; PcieRxMBps stays NaN → panel shows "BW"
 			}
 		}
 

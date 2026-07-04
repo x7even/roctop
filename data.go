@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -26,7 +27,63 @@ type GpuBackend interface {
 
 // ── ROCm backend ────────────────────────────────────────────────────
 
-type rocmBackend struct{}
+// rocmBackend discovers GPUs via rocm-smi once at construction, then reads
+// all per-tick metrics straight from sysfs (microseconds instead of four
+// rocm-smi execs). rocm-smi remains in use for process listing per tick,
+// the one-time static info pass, and as a whole-tick fallback when a GPU
+// cannot be mapped to a sysfs card directory.
+type rocmBackend struct {
+	cards     []rocmCard
+	sysfsMode bool // true when every discovered GPU is mapped to sysfs
+}
+
+// rocmCard couples one rocm-smi GPU's identity (captured at discovery) with
+// its sysfs directories.
+type rocmCard struct {
+	identity GpuData // static identity fields from the discovery pass
+	dev      amdSysfsDev
+}
+
+func newRocmBackend() *rocmBackend {
+	b := &rocmBackend{}
+	b.discover()
+	return b
+}
+
+// discover runs one full rocm-smi pass to enumerate GPUs and maps each to
+// its /sys/class/drm/cardN/device directory via the PCI bus address.
+func (r *rocmBackend) discover() {
+	data := runJSON(rocmSMIFlags...)
+	if data == nil {
+		return
+	}
+	gpus, _ := parseRocmAll(data)
+	cards := make([]rocmCard, 0, len(gpus))
+	mapped := true
+	for _, g := range gpus {
+		c := rocmCard{identity: g, dev: findAmdSysfsDev(drmClassDir, g.PcieBus)}
+		if c.dev.deviceDir == "" {
+			mapped = false
+			logf("rocm: no sysfs card dir for GPU %d (%s); using rocm-smi metrics", g.CardID, g.PcieBus)
+		}
+		cards = append(cards, c)
+	}
+	r.cards = cards
+	r.sysfsMode = len(cards) > 0 && mapped
+}
+
+// sysfsOK reports whether every cached sysfs mapping is still readable.
+func (r *rocmBackend) sysfsOK() bool {
+	for _, c := range r.cards {
+		if c.dev.deviceDir == "" {
+			return false
+		}
+		if _, err := os.Stat(c.dev.deviceDir + "/gpu_busy_percent"); err != nil {
+			return false
+		}
+	}
+	return len(r.cards) > 0
+}
 
 func (r *rocmBackend) Name() string { return "rocm" }
 
@@ -830,11 +887,34 @@ func collectGpuData(backends []GpuBackend) ([]GpuData, []ProcessData) {
 }
 
 func (r *rocmBackend) CollectData() ([]GpuData, []ProcessData) {
-	data := runJSON(rocmSMIFlags...)
-	if data == nil {
-		return nil, nil
+	// Sysfs fast path: refresh the cached mapping only when a read fails,
+	// then fall back to the full rocm-smi pass for this tick if the mapping
+	// still cannot be established.
+	if r.sysfsMode && !r.sysfsOK() {
+		logf("rocm: sysfs mapping stale, rediscovering")
+		r.discover()
+	}
+	if !r.sysfsMode || !r.sysfsOK() {
+		return r.collectViaRocmSMI()
 	}
 
+	gpus := make([]GpuData, 0, len(r.cards))
+	for _, c := range r.cards {
+		g := newGpuData(c.identity.CardID, "rocm")
+		g.Name = c.identity.Name
+		g.Vendor = c.identity.Vendor
+		g.SKU = c.identity.SKU
+		g.GfxVersion = c.identity.GfxVersion
+		g.PcieBus = c.identity.PcieBus
+		collectAmdSysfsMetrics(&g, c.dev)
+		gpus = append(gpus, g)
+	}
+	return gpus, collectRocmProcesses()
+}
+
+// parseRocmAll parses the main rocm-smi JSON payload ("cardN" + "system"
+// keys) into GPU and process lists.
+func parseRocmAll(data map[string]interface{}) ([]GpuData, []ProcessData) {
 	var gpus []GpuData
 	var procs []ProcessData
 
@@ -860,6 +940,41 @@ func (r *rocmBackend) CollectData() ([]GpuData, []ProcessData) {
 	sort.Slice(gpus, func(i, j int) bool {
 		return gpus[i].CardID < gpus[j].CardID
 	})
+
+	return gpus, procs
+}
+
+// collectRocmProcesses runs the per-tick process listing (--showpids plus
+// the conditional --showpidgpus attribution pass).
+func collectRocmProcesses() []ProcessData {
+	data := runJSON("--showpids")
+	if data == nil {
+		return nil
+	}
+	var procs []ProcessData
+	for key, val := range data {
+		if strings.ToLower(key) != "system" {
+			continue
+		}
+		if d, ok := val.(map[string]interface{}); ok {
+			procs = parseProcesses(d)
+		}
+	}
+	if len(procs) > 0 {
+		applyPidGpus(procs)
+	}
+	return procs
+}
+
+// collectViaRocmSMI is the legacy full-exec collection path (four rocm-smi
+// invocations), used when GPUs cannot be mapped to sysfs card directories.
+func (r *rocmBackend) collectViaRocmSMI() ([]GpuData, []ProcessData) {
+	data := runJSON(rocmSMIFlags...)
+	if data == nil {
+		return nil, nil
+	}
+
+	gpus, procs := parseRocmAll(data)
 
 	if len(gpus) > 0 {
 		applyMetrics(gpus)

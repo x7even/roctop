@@ -15,14 +15,13 @@ func detectBackends() []GpuBackend {
 	claimedPCI := make(map[string]bool)
 
 	if _, err := exec.LookPath("rocm-smi"); err == nil {
-		b := &rocmBackend{}
-		gpus, _ := b.CollectData()
-		if len(gpus) == 0 {
+		b := newRocmBackend()
+		if len(b.cards) == 0 {
 			logf("warning: rocm-smi found but returned no GPUs")
 		}
-		for _, g := range gpus {
-			if g.PcieBus != "" {
-				claimedPCI[normalizePCI(g.PcieBus)] = true
+		for _, c := range b.cards {
+			if c.identity.PcieBus != "" {
+				claimedPCI[normalizePCI(c.identity.PcieBus)] = true
 			}
 		}
 		backends = append(backends, b)
