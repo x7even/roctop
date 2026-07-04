@@ -104,6 +104,12 @@ func newRocmBackend(tool amdTool) *rocmBackend {
 // its /sys/class/drm/cardN/device directory via the PCI bus address.
 func (r *rocmBackend) discover() {
 	gpus := r.tool.discover()
+	if len(gpus) == 0 {
+		// Transient tool failure (e.g. during a GPU reset): keep the cached
+		// mapping so rediscovery retries on later ticks instead of locking
+		// the backend into the whole-tick CLI fallback with no cards.
+		return
+	}
 	cards := make([]rocmCard, 0, len(gpus))
 	mapped := true
 	for _, g := range gpus {
