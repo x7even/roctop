@@ -90,6 +90,8 @@ go build -o roctop .
 ```bash
 roctop
 roctop --refresh 1
+roctop --once           # one-shot plain-text snapshot (no TUI, pipe-friendly)
+roctop --once --json    # machine-readable snapshot for scripts
 ```
 
 ### Options
@@ -97,6 +99,8 @@ roctop --refresh 1
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--refresh N` | `2.0` | Refresh interval in seconds (minimum 0.5) |
+| `--once` | — | Print one snapshot to stdout and exit (no TUI) |
+| `--json` | — | With `--once`: emit the snapshot as JSON |
 | `--version` | — | Print version and exit |
 
 ## Keybindings
