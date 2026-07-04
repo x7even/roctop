@@ -2036,3 +2036,130 @@ func TestLiveRocmSysfsBackend(t *testing.T) {
 			g.PerfLevel, g.PcieSpeed, g.PcieWidth)
 	}
 }
+
+// ── Async backend detection ─────────────────────────────────────────
+
+func TestDetectingViewShowsSplash(t *testing.T) {
+	m := newModel(2*time.Second, nil)
+	m.detecting = true
+	if got := m.View(); !strings.Contains(got, "Detecting GPUs") {
+		t.Errorf("View during detection should show 'Detecting GPUs', got %q", got)
+	}
+}
+
+func TestDetectingInitReturnsDetectCmd(t *testing.T) {
+	m := newModel(2*time.Second, nil)
+	m.detecting = true
+	if m.Init() == nil {
+		t.Error("Init while detecting must return a detection command")
+	}
+}
+
+func TestBackendsMsgTransitionsToReady(t *testing.T) {
+	m := newModel(2*time.Second, nil)
+	m.detecting = true
+
+	fb := &fakeBackend{
+		name: "rocm",
+		gpus: []GpuData{{CardID: 0, Backend: "rocm", Name: "Probe GPU"}},
+	}
+	updated, cmd := m.Update(backendsMsg{backends: []GpuBackend{fb}, gpus: fb.gpus})
+	nm := updated.(model)
+
+	if nm.detecting {
+		t.Error("backendsMsg must clear the detecting state")
+	}
+	if nm.fatalErr != nil {
+		t.Errorf("backendsMsg with backends must not set fatalErr, got %v", nm.fatalErr)
+	}
+	if len(nm.backends) != 1 || nm.backends[0].Name() != "rocm" {
+		t.Errorf("backends not installed on model: %v", nm.backends)
+	}
+	// The probe's collection seeds the first paint without another fetch.
+	if len(nm.gpus) != 1 || nm.gpus[0].Name != "Probe GPU" {
+		t.Errorf("probe data should populate m.gpus immediately, got %v", nm.gpus)
+	}
+	if cmd == nil {
+		t.Error("backendsMsg must return a command to start the tick chain")
+	}
+}
+
+func TestBackendsMsgEmptyProbeStartsFetch(t *testing.T) {
+	m := newModel(2*time.Second, nil)
+	m.detecting = true
+
+	fb := &fakeBackend{name: "sysfs"}
+	updated, cmd := m.Update(backendsMsg{backends: []GpuBackend{fb}})
+	nm := updated.(model)
+
+	if nm.detecting {
+		t.Error("backendsMsg must clear the detecting state")
+	}
+	if len(nm.gpus) != 0 {
+		t.Errorf("no probe data given, m.gpus should stay empty, got %v", nm.gpus)
+	}
+	if cmd == nil {
+		t.Error("backendsMsg without probe data must return a fetch+tick command")
+	}
+}
+
+func TestBackendsMsgNoBackendsQuitsWithFatalErr(t *testing.T) {
+	m := newModel(2*time.Second, nil)
+	m.detecting = true
+
+	updated, cmd := m.Update(backendsMsg{})
+	nm := updated.(model)
+
+	if nm.fatalErr == nil {
+		t.Fatal("backendsMsg with no backends must set fatalErr")
+	}
+	if !strings.Contains(nm.fatalErr.Error(), "no supported GPUs") {
+		t.Errorf("fatalErr should describe missing GPUs, got %q", nm.fatalErr)
+	}
+	if cmd == nil {
+		t.Fatal("backendsMsg with no backends must return tea.Quit")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Error("returned command must be tea.Quit")
+	}
+}
+
+func TestTickIgnoredWhileDetecting(t *testing.T) {
+	m := newModel(2*time.Second, nil)
+	m.detecting = true
+
+	updated, cmd := m.Update(tickMsg(time.Now()))
+	nm := updated.(model)
+
+	if cmd != nil {
+		t.Error("tick during detection must not schedule fetches or more ticks")
+	}
+	if !nm.detecting {
+		t.Error("tick must not clear the detecting state")
+	}
+}
+
+func TestRefreshKeyIgnoredWhileDetecting(t *testing.T) {
+	m := newModel(2*time.Second, nil)
+	m.detecting = true
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	if cmd != nil {
+		t.Error("'r' during detection must not trigger a fetch")
+	}
+}
+
+func TestSortAndMergeGpuDataOrders(t *testing.T) {
+	gpus := []GpuData{
+		{CardID: 1, Backend: "sysfs"},
+		{CardID: 2, Backend: "rocm"},
+		{CardID: 0, Backend: "rocm"},
+	}
+	sorted, _ := sortAndMergeGpuData(gpus, nil)
+	want := []string{"rocm:0", "rocm:2", "sysfs:1"}
+	for i, w := range want {
+		if sorted[i].HistKey() != w {
+			t.Errorf("position %d: got %s, want %s", i, sorted[i].HistKey(), w)
+		}
+	}
+}

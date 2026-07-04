@@ -29,8 +29,18 @@ type dataMsg struct {
 	procs []ProcessData
 }
 
+// backendsMsg delivers the result of asynchronous GPU backend detection,
+// including the probe's first collection so it can seed the initial paint.
+type backendsMsg struct {
+	backends []GpuBackend
+	gpus     []GpuData
+	procs    []ProcessData
+}
+
 type model struct {
 	backends      []GpuBackend
+	detecting     bool  // backend detection still in flight; View shows a splash
+	fatalErr      error // fatal startup error; main prints it after Run returns
 	gpus          []GpuData
 	procs         []ProcessData
 	histories     map[string]*GpuHistory
@@ -104,6 +114,15 @@ func carryStaticFields(from, to *GpuData) {
 // ── Tea commands ──────────────────────────────────────────────────────
 
 type staticInfoMsg []GpuData
+
+// detectBackendsCmd runs GPU backend detection off the UI thread and
+// delivers the result as a backendsMsg.
+func detectBackendsCmd() tea.Cmd {
+	return func() tea.Msg {
+		backends, gpus, procs := detectBackends()
+		return backendsMsg{backends: backends, gpus: gpus, procs: procs}
+	}
+}
 
 func fetchDataCmd(backends []GpuBackend) tea.Cmd {
 	return func() tea.Msg {
@@ -202,6 +221,11 @@ func (m model) vpHeight() int {
 // ── Model lifecycle ───────────────────────────────────────────────────
 
 func (m model) Init() tea.Cmd {
+	if m.detecting {
+		// Detect GPUs first; the initial fetch and tick chain start when
+		// the backendsMsg arrives (see Update).
+		return detectBackendsCmd()
+	}
 	return tea.Batch(
 		fetchDataCmd(m.backends),
 		tickCmd(m.interval),
@@ -228,6 +252,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.setViewportContent()
 			m.vp.SetYOffset(yOff)
 		}
+
+	case backendsMsg:
+		m.detecting = false
+		if len(msg.backends) == 0 {
+			m.fatalErr = errNoBackends
+			return m, tea.Quit
+		}
+		m.backends = msg.backends
+		if len(msg.gpus) > 0 {
+			// Reuse the detection probe's collection for the first paint
+			// instead of waiting a full interval for the next fetch.
+			next, cmd := m.Update(dataMsg{gpus: msg.gpus, procs: msg.procs})
+			return next, tea.Batch(cmd, tickCmd(m.interval))
+		}
+		return m, tea.Batch(fetchDataCmd(m.backends), tickCmd(m.interval))
 
 	case dataMsg:
 		if len(msg.gpus) == 0 {
@@ -344,6 +383,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tickMsg:
+		if m.detecting {
+			// No tick chain runs during detection; ignore any stray tick.
+			return m, nil
+		}
 		if m.paused {
 			return m, tickCmd(m.interval)
 		}
@@ -354,6 +397,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		case "r":
+			if m.detecting {
+				return m, nil
+			}
 			return m, fetchDataCmd(m.backends)
 		case "+", "=":
 			m.interval -= refreshStep
@@ -503,6 +549,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
+	if m.detecting {
+		return "Detecting GPUs..."
+	}
 	if !m.ready || !m.vpReady || m.width == 0 {
 		return "Loading..."
 	}

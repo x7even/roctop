@@ -870,6 +870,19 @@ func collectStaticInfo(gpus []GpuData) {
 
 // ── Main collection entry point ──────────────────────────────────────
 
+// sortAndMergeGpuData orders GPUs by backend then card ID and merges the
+// per-backend process lists into one deduplicated, VRAM-sorted list. Shared
+// by the periodic collector and the startup detection probe.
+func sortAndMergeGpuData(gpus []GpuData, procs []ProcessData) ([]GpuData, []ProcessData) {
+	sort.SliceStable(gpus, func(i, j int) bool {
+		if gpus[i].Backend != gpus[j].Backend {
+			return backendOrder(gpus[i].Backend) < backendOrder(gpus[j].Backend)
+		}
+		return gpus[i].CardID < gpus[j].CardID
+	})
+	return gpus, mergeProcesses(procs)
+}
+
 func collectGpuData(backends []GpuBackend) ([]GpuData, []ProcessData) {
 	// Backends are independent processes/files with no shared state, so each
 	// CollectData runs in its own goroutine. Results land in per-backend slots
@@ -895,14 +908,7 @@ func collectGpuData(backends []GpuBackend) ([]GpuData, []ProcessData) {
 		allGpus = append(allGpus, r.gpus...)
 		allProcs = append(allProcs, r.procs...)
 	}
-	sort.SliceStable(allGpus, func(i, j int) bool {
-		if allGpus[i].Backend != allGpus[j].Backend {
-			return backendOrder(allGpus[i].Backend) < backendOrder(allGpus[j].Backend)
-		}
-		return allGpus[i].CardID < allGpus[j].CardID
-	})
-	allProcs = mergeProcesses(allProcs)
-	return allGpus, allProcs
+	return sortAndMergeGpuData(allGpus, allProcs)
 }
 
 func (r *rocmBackend) CollectData() ([]GpuData, []ProcessData) {
