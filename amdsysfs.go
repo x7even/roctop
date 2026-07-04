@@ -232,11 +232,14 @@ func parseLinkSpeed(s string) string {
 	return fmt.Sprintf("%.1fGT/s", v)
 }
 
-// gpu_metrics field offsets shared by all format_revision=1 layouts
-// (see the struct layout documented above readGpuMetricsBandwidth).
+// gpu_metrics field offsets valid for format_revision=1 with
+// content_revision 1-3 only (see the struct layout documented above
+// readGpuMetricsBandwidth). v1.0 and v1.4+ blobs lay these fields out
+// differently: on v1.4/v1.5 (MI300-class), offset 18 is vcn_activity[1]
+// and offset 68 falls inside the pcie_bandwidth_acc accumulator.
 const (
-	gpuMetricsUmcOff      = 18 // average_umc_activity (u16)
-	gpuMetricsThrottleOff = 68 // throttle_status (u32)
+	gpuMetricsUmcOff      = 18 // average_umc_activity (u16), v1.1-v1.3
+	gpuMetricsThrottleOff = 68 // throttle_status (u32), v1.1-v1.3
 	gpuMetricsU16NA       = 0xffff
 	gpuMetricsU32NA       = 0xffffffff
 )
@@ -251,7 +254,9 @@ func readGpuMetricsFields(deviceDir string) (umc float64, throttle uint32) {
 		return 0, 0
 	}
 	size := binary.LittleEndian.Uint16(data[0:2])
-	if data[2] != 1 || int(size) != len(data) {
+	// Only format_revision=1, content_revision 1-3 use these offsets
+	// (mirrors the content_revision gate in readGpuMetricsBandwidth).
+	if data[2] != 1 || data[3] < 1 || data[3] > 3 || int(size) != len(data) {
 		return 0, 0
 	}
 	if len(data) >= gpuMetricsUmcOff+2 {

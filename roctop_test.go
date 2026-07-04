@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1743,6 +1744,26 @@ func TestReadGpuMetricsFieldsMissing(t *testing.T) {
 	}
 }
 
+// The offsets used by readGpuMetricsFields are valid only for content
+// revisions 1-3. v1.0 and v1.4+ (e.g. MI300 gpu_metrics_v1_4/v1_5) lay the
+// struct out differently — offset 18 is vcn_activity[1] and offset 68 is
+// part of the pcie_bandwidth_acc accumulator — so those revisions must be
+// rejected rather than misdecoded into UMC%/throttle status.
+func TestReadGpuMetricsFieldsWrongContentRevision(t *testing.T) {
+	for _, rev := range []byte{0, 4, 5} {
+		dir := t.TempDir()
+		blob := buildGpuMetricsV13(55, 0x3)
+		blob[3] = rev // content_revision outside 1-3
+		if err := os.WriteFile(dir+"/gpu_metrics", blob, 0644); err != nil {
+			t.Fatal(err)
+		}
+		umc, throttle := readGpuMetricsFields(dir)
+		if umc != 0 || throttle != 0 {
+			t.Errorf("content_revision=%d should yield zeros, got %v/%d", rev, umc, throttle)
+		}
+	}
+}
+
 func TestFindAmdSysfsDev(t *testing.T) {
 	root := t.TempDir()
 	deviceDir := root + "/card0/device"
@@ -1800,6 +1821,41 @@ func TestNewGpuDataDefaults(t *testing.T) {
 			t.Errorf("%s should default to -1, got %d", name, v)
 		}
 	}
+}
+
+// TestRocmBackendConcurrentCollect reproduces overlapping bubbletea fetch
+// goroutines hitting a stale sysfs mapping: every CollectData call then runs
+// discover(), which rewrites cards/sysfsMode while the other goroutines read
+// them. Run under -race this used to report a data race at the cards/sysfsMode
+// writes; CollectData must serialize via the backend mutex. A fake rocm-smi on
+// PATH keeps the test hermetic (no GPUs or real rocm-smi needed).
+func TestRocmBackendConcurrentCollect(t *testing.T) {
+	binDir := t.TempDir()
+	script := "#!/bin/sh\necho '{\"card0\": {\"Card Series\": \"Fake GPU\", \"PCI Bus\": \"0000:ff:1f.7\"}}'\n"
+	if err := os.WriteFile(binDir+"/rocm-smi", []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir)
+
+	b := &rocmBackend{
+		sysfsMode: true,
+		cards: []rocmCard{{
+			identity: GpuData{CardID: 0, Backend: "rocm", Name: "stale"},
+			// Directory exists but lacks gpu_busy_percent, so sysfsOK fails
+			// and every CollectData call rediscovers.
+			dev: amdSysfsDev{deviceDir: t.TempDir()},
+		}},
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			b.CollectData()
+		}()
+	}
+	wg.Wait()
 }
 
 // ── Live hardware smoke test (skipped on GPU-less CI) ───────────────

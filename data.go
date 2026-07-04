@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -33,6 +34,7 @@ type GpuBackend interface {
 // the one-time static info pass, and as a whole-tick fallback when a GPU
 // cannot be mapped to a sysfs card directory.
 type rocmBackend struct {
+	mu        sync.Mutex // guards cards and sysfsMode; bubbletea can run overlapping collection goroutines
 	cards     []rocmCard
 	sysfsMode bool // true when every discovered GPU is mapped to sysfs
 }
@@ -887,6 +889,13 @@ func collectGpuData(backends []GpuBackend) ([]GpuData, []ProcessData) {
 }
 
 func (r *rocmBackend) CollectData() ([]GpuData, []ProcessData) {
+	// Serialize collections: each bubbletea fetch command runs in its own
+	// goroutine, so a manual refresh (or a slow fallback pass) can overlap
+	// the next tick; discover() rewrites cards/sysfsMode and must not race
+	// with another goroutine reading them.
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	// Sysfs fast path: refresh the cached mapping only when a read fails,
 	// then fall back to the full rocm-smi pass for this tick if the mapping
 	// still cannot be established.
