@@ -75,14 +75,56 @@ func detectBackends() ([]GpuBackend, []GpuData, []ProcessData) {
 // version is injected at build time via ldflags: -X main.version=x.y.z
 var version = "dev"
 
+// printNoBackends writes the standard "no GPUs" message to stderr.
+func printNoBackends() {
+	fmt.Fprintln(os.Stderr, "error: no supported GPUs found.")
+	fmt.Fprintln(os.Stderr, "roctop requires ROCm (rocm-smi), NVIDIA (nvidia-smi), or a compatible GPU in sysfs.")
+}
+
+// runSnapshot handles --once: one detection pass (which includes exactly one
+// collection), printed as plain text or JSON. Never starts bubbletea, so it
+// works without a tty. Returns the process exit code.
+func runSnapshot(asJSON bool) int {
+	backends, gpus, procs := detectBackends()
+	if len(backends) == 0 {
+		printNoBackends()
+		return 1
+	}
+	var names []string
+	for _, b := range backends {
+		names = append(names, b.Name())
+	}
+	if asJSON {
+		out, err := buildSnapshotJSON(gpus, procs, names)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			return 1
+		}
+		fmt.Println(string(out))
+	} else {
+		fmt.Print(renderSnapshotText(gpus, procs, names))
+	}
+	return 0
+}
+
 func main() {
 	refreshSecs := flag.Float64("refresh", 2.0, "Refresh interval in seconds (default: 2.0)")
 	showVersion := flag.Bool("version", false, "Print version and exit")
+	once := flag.Bool("once", false, "Collect once, print a plain-text snapshot to stdout, and exit")
+	jsonOut := flag.Bool("json", false, "With --once, emit the snapshot as JSON")
 	flag.Parse()
 
 	if *showVersion {
 		fmt.Println("roctop", version)
 		os.Exit(0)
+	}
+
+	if *jsonOut && !*once {
+		fmt.Fprintln(os.Stderr, "error: --json requires --once")
+		os.Exit(1)
+	}
+	if *once {
+		os.Exit(runSnapshot(*jsonOut))
 	}
 
 	interval := time.Duration(*refreshSecs * float64(time.Second))
@@ -108,8 +150,7 @@ func main() {
 	}
 	if fm, ok := finalModel.(model); ok && fm.fatalErr != nil {
 		if errors.Is(fm.fatalErr, errNoBackends) {
-			fmt.Fprintln(os.Stderr, "error: no supported GPUs found.")
-			fmt.Fprintln(os.Stderr, "roctop requires ROCm (rocm-smi), NVIDIA (nvidia-smi), or a compatible GPU in sysfs.")
+			printNoBackends()
 		} else {
 			fmt.Fprintln(os.Stderr, "error:", fm.fatalErr)
 		}
