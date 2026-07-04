@@ -5,6 +5,7 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -1248,7 +1249,7 @@ func TestOneColumnBelowThreshold(t *testing.T) {
 func makeProcs(n int) []ProcessData {
 	procs := make([]ProcessData, n)
 	for i := range procs {
-		procs[i] = ProcessData{PID: 1000 + i, Name: "proc", GpuIDs: []int{0}, VramUsed: 1 << 20}
+		procs[i] = ProcessData{PID: 1000 + i, Name: "proc", GpuIDs: []int{0}, VramUsed: 1 << 20, GpuBusy: math.NaN()}
 	}
 	return procs
 }
@@ -1303,7 +1304,7 @@ func TestProcessTableExactlyMax(t *testing.T) {
 }
 
 func TestProcessTableNameEllipsis(t *testing.T) {
-	procs := []ProcessData{{PID: 42, Name: "averylongprocessname_xyz", GpuIDs: []int{0}, VramUsed: 1 << 20}}
+	procs := []ProcessData{{PID: 42, Name: "averylongprocessname_xyz", GpuIDs: []int{0}, VramUsed: 1 << 20, GpuBusy: math.NaN()}}
 	out := renderProcessTable(procs, 120)
 	if !strings.Contains(out, "…") {
 		t.Error("name longer than 19 chars should be truncated with ellipsis")
@@ -1314,7 +1315,7 @@ func TestProcessTableNameEllipsis(t *testing.T) {
 }
 
 func TestProcessTableShortNameNoEllipsis(t *testing.T) {
-	procs := []ProcessData{{PID: 42, Name: "shortname", GpuIDs: []int{0}, VramUsed: 1 << 20}}
+	procs := []ProcessData{{PID: 42, Name: "shortname", GpuIDs: []int{0}, VramUsed: 1 << 20, GpuBusy: math.NaN()}}
 	out := renderProcessTable(procs, 120)
 	if strings.Contains(out, "…") {
 		t.Error("short name should not have ellipsis")
@@ -2161,6 +2162,425 @@ func TestSortAndMergeGpuDataOrders(t *testing.T) {
 	for i, w := range want {
 		if sorted[i].HistKey() != w {
 			t.Errorf("position %d: got %s, want %s", i, sorted[i].HistKey(), w)
+		}
+	}
+}
+
+// ── DRM fdinfo process collection ────────────────────────────────────
+
+// fdinfoLiveSample mirrors a real /proc/<pid>/fdinfo/<fd> capture from an
+// amdgpu DKMS 6.16.6 kernel: tab separators for most keys, "key: \tvalue"
+// for the legacy drm-memory-* aliases, and mixed KiB/MiB units.
+const fdinfoLiveSample = `pos:	0
+flags:	02100002
+mnt_id:	825
+ino:	541
+drm-driver:	amdgpu
+drm-client-id:	1634895
+drm-pdev:	0000:83:00.0
+pasid:	32788
+drm-total-cpu:	1412580 KiB
+drm-total-gtt:	8268 KiB
+drm-total-vram:	28899092 KiB
+drm-shared-vram:	112 MiB
+drm-memory-vram:	28899092 KiB
+drm-memory-gtt: 	8244 KiB
+drm-memory-cpu: 	0 KiB
+amd-evicted-vram:	0 KiB
+`
+
+func TestParseFdinfoLiveSample(t *testing.T) {
+	c, ok := parseFdinfo(fdinfoLiveSample)
+	if !ok {
+		t.Fatal("parseFdinfo rejected a valid amdgpu sample")
+	}
+	if c.ClientID != "1634895" {
+		t.Errorf("ClientID = %q, want 1634895", c.ClientID)
+	}
+	if c.Pdev != "0000:83:00.0" {
+		t.Errorf("Pdev = %q, want 0000:83:00.0", c.Pdev)
+	}
+	if want := int64(28899092) * 1024; c.VramBytes != want {
+		t.Errorf("VramBytes = %d, want %d", c.VramBytes, want)
+	}
+	if want := int64(8268) * 1024; c.GttBytes != want {
+		t.Errorf("GttBytes = %d, want %d (drm-total-gtt preferred over drm-memory-gtt)", c.GttBytes, want)
+	}
+	if c.EngineNs != nil {
+		t.Errorf("EngineNs = %v, want nil (no drm-engine-* keys on this kernel)", c.EngineNs)
+	}
+}
+
+func TestParseFdinfoLegacyKeysSpaceSeparatorAndUnits(t *testing.T) {
+	// Upstream-style sample: space separators, only legacy drm-memory-*
+	// keys, MiB/GiB units, engine counters.
+	sample := `drm-driver: amdgpu
+drm-client-id: 42
+drm-pdev: 0000:C3:00.0
+drm-memory-vram: 2 GiB
+drm-memory-gtt: 112 MiB
+drm-engine-gfx: 1500000000 ns
+drm-engine-compute: 25000000 ns
+drm-engine-capacity-gfx: 1
+`
+	c, ok := parseFdinfo(sample)
+	if !ok {
+		t.Fatal("parseFdinfo rejected a valid sample")
+	}
+	if c.Pdev != "0000:c3:00.0" {
+		t.Errorf("Pdev = %q, want lowercased 0000:c3:00.0", c.Pdev)
+	}
+	if want := int64(2) << 30; c.VramBytes != want {
+		t.Errorf("VramBytes = %d, want %d (GiB unit, drm-memory-vram fallback)", c.VramBytes, want)
+	}
+	if want := int64(112) << 20; c.GttBytes != want {
+		t.Errorf("GttBytes = %d, want %d (MiB unit)", c.GttBytes, want)
+	}
+	if len(c.EngineNs) != 2 || c.EngineNs["gfx"] != 1500000000 || c.EngineNs["compute"] != 25000000 {
+		t.Errorf("EngineNs = %v, want gfx=1500000000 compute=25000000 (capacity keys excluded)", c.EngineNs)
+	}
+}
+
+func TestParseFdinfoRejects(t *testing.T) {
+	for name, sample := range map[string]string{
+		"other driver":     "drm-driver: i915\ndrm-client-id: 9\n",
+		"missing clientid": "drm-driver: amdgpu\ndrm-pdev: 0000:03:00.0\n",
+		"plain fd":         "pos:\t0\nflags:\t02\n",
+	} {
+		if _, ok := parseFdinfo(sample); ok {
+			t.Errorf("%s: parseFdinfo accepted, want reject", name)
+		}
+	}
+}
+
+// writeFdinfoFd creates one fake fd symlink plus its fdinfo file under a
+// fixture /proc tree.
+func writeFdinfoFd(t *testing.T, procRoot string, pid int, fd, target, fdinfo string) {
+	t.Helper()
+	base := fmt.Sprintf("%s/%d", procRoot, pid)
+	for _, d := range []string{base + "/fd", base + "/fdinfo"} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(target, base+"/fd/"+fd); err != nil {
+		t.Fatal(err)
+	}
+	if fdinfo != "" {
+		if err := os.WriteFile(base+"/fdinfo/"+fd, []byte(fdinfo), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func amdgpuFdinfo(clientID, pdev, vram string) string {
+	return "drm-driver:\tamdgpu\ndrm-client-id:\t" + clientID +
+		"\ndrm-pdev:\t" + pdev + "\ndrm-total-vram:\t" + vram + "\n"
+}
+
+func TestScanDrmClients(t *testing.T) {
+	proc := t.TempDir()
+	// PID 101: two fds for the same client (dup'd), one distinct client,
+	// one non-DRM fd.
+	writeFdinfoFd(t, proc, 101, "3", "/dev/dri/renderD128", amdgpuFdinfo("10", "0000:03:00.0", "1024 KiB"))
+	writeFdinfoFd(t, proc, 101, "4", "/dev/dri/renderD128", amdgpuFdinfo("10", "0000:03:00.0", "1024 KiB"))
+	writeFdinfoFd(t, proc, 101, "5", "/dev/dri/renderD129", amdgpuFdinfo("11", "0000:83:00.0", "2048 KiB"))
+	writeFdinfoFd(t, proc, 101, "6", "/dev/null", "")
+	// PID 102: kfd-only process — candidate with zero parsed clients.
+	writeFdinfoFd(t, proc, 102, "3", "/dev/kfd", "")
+	// PID 103: no GPU fds at all.
+	writeFdinfoFd(t, proc, 103, "3", "/dev/null", "")
+	// PID 104: non-amdgpu DRM client.
+	writeFdinfoFd(t, proc, 104, "3", "/dev/dri/card1", "drm-driver:\ti915\ndrm-client-id:\t7\n")
+	// Non-PID directory must be ignored.
+	if err := os.MkdirAll(proc+"/self/fd", 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	got := scanDrmClients(proc)
+
+	if clients := got[101]; len(clients) != 2 {
+		t.Fatalf("PID 101: %d clients, want 2 (dup fd deduped by client-id): %+v", len(clients), clients)
+	}
+	if clients, ok := got[102]; !ok || len(clients) != 0 {
+		t.Errorf("PID 102 (kfd-only): want candidate with 0 clients, got ok=%v clients=%v", ok, clients)
+	}
+	if _, ok := got[103]; ok {
+		t.Error("PID 103 has no DRM fds and must not be a candidate")
+	}
+	if clients, ok := got[104]; !ok || len(clients) != 0 {
+		t.Errorf("PID 104 (i915): want candidate with 0 amdgpu clients, got ok=%v clients=%v", ok, clients)
+	}
+}
+
+// newTestFdinfoCollector returns a collector rooted at empty temp dirs; the
+// caller populates procRoot / kfd trees as needed.
+func newTestFdinfoCollector(t *testing.T) *fdinfoCollector {
+	t.Helper()
+	kfd := t.TempDir()
+	return &fdinfoCollector{
+		procRoot:    t.TempDir(),
+		kfdProcRoot: kfd + "/proc",
+		kfdTopoRoot: kfd + "/topology/nodes",
+	}
+}
+
+func testProcName(pid int) string { return "proc" + strconv.Itoa(pid) }
+
+func TestFdinfoCollectorAggregation(t *testing.T) {
+	f := newTestFdinfoCollector(t)
+	// PID 200: clients on two known GPUs plus one on a foreign pdev.
+	writeFdinfoFd(t, f.procRoot, 200, "3", "/dev/dri/renderD128", amdgpuFdinfo("1", "0000:03:00.0", "1048576 KiB"))
+	writeFdinfoFd(t, f.procRoot, 200, "4", "/dev/dri/renderD129", amdgpuFdinfo("2", "0000:83:00.0", "512 MiB"))
+	writeFdinfoFd(t, f.procRoot, 200, "5", "/dev/dri/renderD130", amdgpuFdinfo("3", "0000:ff:00.0", "4 GiB"))
+	// PID 201: only a foreign-pdev client — must not be reported.
+	writeFdinfoFd(t, f.procRoot, 201, "3", "/dev/dri/renderD130", amdgpuFdinfo("4", "0000:ff:00.0", "1 GiB"))
+
+	pdevToGpu := map[string]int{"0000:03:00.0": 0, "0000:83:00.0": 1}
+	procs := f.collect(pdevToGpu, testProcName)
+
+	if len(procs) != 1 {
+		t.Fatalf("got %d processes, want 1: %+v", len(procs), procs)
+	}
+	p := procs[0]
+	if p.PID != 200 || p.Name != "proc200" {
+		t.Errorf("PID/Name = %d/%q, want 200/proc200", p.PID, p.Name)
+	}
+	if want := int64(1<<30) + int64(512)<<20; p.VramUsed != want {
+		t.Errorf("VramUsed = %d, want %d (foreign pdev excluded)", p.VramUsed, want)
+	}
+	gpus := append([]int(nil), p.GpuIDs...)
+	sort.Ints(gpus)
+	if len(gpus) != 2 || gpus[0] != 0 || gpus[1] != 1 {
+		t.Errorf("GpuIDs = %v, want [0 1]", p.GpuIDs)
+	}
+	if !math.IsNaN(p.GpuBusy) {
+		t.Errorf("GpuBusy = %v, want NaN (no drm-engine counters)", p.GpuBusy)
+	}
+}
+
+// writeKfdFixture creates a KFD topology node and per-process vram file.
+func writeKfdTopoNode(t *testing.T, topoRoot, node, gpuID string, props string) {
+	t.Helper()
+	dir := topoRoot + "/" + node
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dir+"/gpu_id", []byte(gpuID+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dir+"/properties", []byte(props), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestKfdGpuPdevMap(t *testing.T) {
+	topo := t.TempDir()
+	writeKfdTopoNode(t, topo, "0", "0", "cpu_cores_count 64\n") // CPU node skipped
+	// location_id 768 = 0x0300 → bus 03, dev 00, fn 0.
+	writeKfdTopoNode(t, topo, "1", "23334", "simd_count 304\nlocation_id 768\ndomain 0\n")
+	// location_id 33536 = 0x8300 → bus 83; domain defaults to 0 when absent.
+	writeKfdTopoNode(t, topo, "2", "64327", "location_id 33536\n")
+
+	got := kfdGpuPdevMap(topo)
+	if got["23334"] != "0000:03:00.0" {
+		t.Errorf("gpu 23334 pdev = %q, want 0000:03:00.0", got["23334"])
+	}
+	if got["64327"] != "0000:83:00.0" {
+		t.Errorf("gpu 64327 pdev = %q, want 0000:83:00.0", got["64327"])
+	}
+	if _, ok := got["0"]; ok {
+		t.Error("CPU node must not be mapped")
+	}
+}
+
+// TestFdinfoCollectorKfdOverride reproduces the XGMI peer-mapping case seen
+// live: fdinfo charges a KFD process's VRAM to every peer GPU's client, so
+// the KFD proc sysfs numbers must win.
+func TestFdinfoCollectorKfdOverride(t *testing.T) {
+	f := newTestFdinfoCollector(t)
+	const vramKiB = "28899092 KiB" // ~27.6 GiB on BOTH clients (double count)
+	writeFdinfoFd(t, f.procRoot, 300, "9", "/dev/dri/renderD128", amdgpuFdinfo("1", "0000:03:00.0", vramKiB))
+	writeFdinfoFd(t, f.procRoot, 300, "10", "/dev/dri/renderD129", amdgpuFdinfo("2", "0000:83:00.0", vramKiB))
+
+	writeKfdTopoNode(t, f.kfdTopoRoot, "1", "111", "location_id 768\ndomain 0\n")
+	writeKfdTopoNode(t, f.kfdTopoRoot, "2", "222", "location_id 33536\ndomain 0\n")
+	kfdProc := f.kfdProcRoot + "/300"
+	if err := os.MkdirAll(kfdProc, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(kfdProc+"/vram_111", []byte("30201860096\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(kfdProc+"/vram_222", []byte("0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	procs := f.collect(map[string]int{"0000:03:00.0": 0, "0000:83:00.0": 1}, testProcName)
+	if len(procs) != 1 {
+		t.Fatalf("got %d processes, want 1", len(procs))
+	}
+	p := procs[0]
+	if p.VramUsed != 30201860096 {
+		t.Errorf("VramUsed = %d, want 30201860096 (KFD per-device truth, not the 2x fdinfo sum)", p.VramUsed)
+	}
+	if len(p.GpuIDs) != 1 || p.GpuIDs[0] != 0 {
+		t.Errorf("GpuIDs = %v, want [0] (only the GPU with nonzero KFD vram)", p.GpuIDs)
+	}
+}
+
+func TestFdinfoEngineBusy(t *testing.T) {
+	f := newTestFdinfoCollector(t)
+	fdinfo := amdgpuFdinfo("50", "0000:03:00.0", "1024 KiB") +
+		"drm-engine-gfx:\t5000000000 ns\ndrm-engine-compute:\t1000000000 ns\n"
+	writeFdinfoFd(t, f.procRoot, 400, "3", "/dev/dri/renderD128", fdinfo)
+	pdevToGpu := map[string]int{"0000:03:00.0": 0}
+
+	// First sample: no previous counters → busy unknown.
+	procs := f.collect(pdevToGpu, testProcName)
+	if len(procs) != 1 || !math.IsNaN(procs[0].GpuBusy) {
+		t.Fatalf("first sample: want 1 proc with NaN GpuBusy, got %+v", procs)
+	}
+
+	// Rewind the stored sample 10s into the past; the busiest engine (gfx)
+	// then advanced 5e9 ns over ~10s → ~50% busy.
+	key := "400:50"
+	prev, ok := f.prev[key]
+	if !ok {
+		t.Fatalf("engine state for %s not stored: %v", key, f.prev)
+	}
+	f.prev[key] = engineSample{
+		engines: map[string]uint64{"gfx": 0, "compute": 0},
+		t:       prev.t.Add(-10 * time.Second),
+	}
+
+	procs = f.collect(pdevToGpu, testProcName)
+	if len(procs) != 1 {
+		t.Fatalf("second sample: got %d procs, want 1", len(procs))
+	}
+	busy := procs[0].GpuBusy
+	if math.IsNaN(busy) || busy < 40 || busy > 55 {
+		t.Errorf("GpuBusy = %v, want ~50 (max engine ratio, not the sum)", busy)
+	}
+}
+
+func TestMergeProcessesGpuBusy(t *testing.T) {
+	merged := mergeProcesses([]ProcessData{
+		{PID: 1, GpuIDs: []int{0}, VramUsed: 10, GpuBusy: 40},
+		{PID: 1, GpuIDs: []int{1}, VramUsed: 10, GpuBusy: math.NaN()},
+		{PID: 1, GpuIDs: []int{2}, VramUsed: 10, GpuBusy: 25},
+		{PID: 2, GpuIDs: []int{0}, VramUsed: 5, GpuBusy: math.NaN()},
+	})
+	if len(merged) != 2 {
+		t.Fatalf("got %d procs, want 2", len(merged))
+	}
+	byPID := map[int]ProcessData{}
+	for _, p := range merged {
+		byPID[p.PID] = p
+	}
+	if got := byPID[1].GpuBusy; got != 65 {
+		t.Errorf("PID 1 GpuBusy = %v, want 65 (NaN entries ignored, known summed)", got)
+	}
+	if got := byPID[2].GpuBusy; !math.IsNaN(got) {
+		t.Errorf("PID 2 GpuBusy = %v, want NaN", got)
+	}
+}
+
+func TestProcessTableNoBusyColumnWithoutData(t *testing.T) {
+	// All GpuBusy unknown → the table must not grow a GPU% column and must
+	// render byte-identically to the pre-fdinfo layout.
+	out := renderProcessTable(makeProcs(3), 120)
+	if strings.Contains(out, "GPU%") {
+		t.Errorf("GPU%% column must be absent when no process has busy data:\n%s", out)
+	}
+}
+
+func TestProcessTableBusyColumn(t *testing.T) {
+	procs := []ProcessData{
+		{PID: 1, Name: "busyproc", GpuIDs: []int{0}, VramUsed: 1 << 30, GpuBusy: 87.4},
+		{PID: 2, Name: "quietproc", GpuIDs: []int{1}, VramUsed: 1 << 20, GpuBusy: math.NaN()},
+	}
+	out := renderProcessTable(procs, 120)
+	if !strings.Contains(out, "GPU%") {
+		t.Errorf("GPU%% header missing when a process has busy data:\n%s", out)
+	}
+	if !strings.Contains(out, "87%") {
+		t.Errorf("busy value not rendered:\n%s", out)
+	}
+	if !strings.Contains(out, "-") {
+		t.Errorf("unknown busy should render as '-':\n%s", out)
+	}
+}
+
+// TestLiveFdinfoProcesses exercises the fdinfo collector against the real
+// /proc and KFD sysfs of a machine with AMD GPUs, and cross-checks the
+// result against the rocm-smi --showpids path. Skipped on GPU-less CI.
+func TestLiveFdinfoProcesses(t *testing.T) {
+	if _, err := exec.LookPath("rocm-smi"); err != nil {
+		t.Skip("rocm-smi not installed")
+	}
+	b := newRocmBackend(newRocmSMITool())
+	if len(b.cards) == 0 {
+		t.Skip("rocm-smi reported no GPUs")
+	}
+	identities := make([]GpuData, 0, len(b.cards))
+	for _, c := range b.cards {
+		identities = append(identities, c.identity)
+	}
+	pdevToGpu := rocmPdevMap(identities)
+
+	fdProcs := b.fdinfo.collect(pdevToGpu, procName)
+	if len(fdProcs) == 0 {
+		t.Skip("no readable DRM clients (no GPU processes, or they belong to another uid)")
+	}
+	for _, p := range fdProcs {
+		if p.Name == "" || p.Name == "unknown" {
+			t.Errorf("PID %d has no name", p.PID)
+		}
+		if len(p.GpuIDs) == 0 {
+			t.Errorf("PID %d has no GPU attribution", p.PID)
+		}
+		for _, g := range p.GpuIDs {
+			if _, ok := cardIndexByID(identities)[g]; !ok {
+				t.Errorf("PID %d attributed to unknown GPU %d", p.PID, g)
+			}
+		}
+		t.Logf("fdinfo: pid=%d name=%s gpus=%v vram=%d busy=%v", p.PID, p.Name, p.GpuIDs, p.VramUsed, p.GpuBusy)
+	}
+
+	// Cross-check against the legacy rocm-smi path: every PID it reports
+	// with VRAM must be present with a VRAM figure within 25%.
+	rocmProcs := collectRocmProcesses()
+	if len(rocmProcs) == 0 {
+		t.Log("rocm-smi reported no processes; skipping comparison")
+		return
+	}
+	byPID := map[int]ProcessData{}
+	for _, p := range fdProcs {
+		byPID[p.PID] = p
+	}
+	for _, rp := range rocmProcs {
+		t.Logf("rocm-smi: pid=%d name=%s gpus=%v vram=%d", rp.PID, rp.Name, rp.GpuIDs, rp.VramUsed)
+		if rp.VramUsed == 0 {
+			continue
+		}
+		fp, ok := byPID[rp.PID]
+		if !ok {
+			t.Errorf("PID %d (vram=%d) reported by rocm-smi but missing from fdinfo", rp.PID, rp.VramUsed)
+			continue
+		}
+		ratio := float64(fp.VramUsed) / float64(rp.VramUsed)
+		if ratio < 0.75 || ratio > 1.25 {
+			t.Errorf("PID %d VRAM mismatch: fdinfo=%d rocm-smi=%d", rp.PID, fp.VramUsed, rp.VramUsed)
+		}
+		if len(rp.GpuIDs) > 0 {
+			a := append([]int(nil), fp.GpuIDs...)
+			b := append([]int(nil), rp.GpuIDs...)
+			sort.Ints(a)
+			sort.Ints(b)
+			if fmt.Sprint(a) != fmt.Sprint(b) {
+				t.Errorf("PID %d GPU attribution mismatch: fdinfo=%v rocm-smi=%v", rp.PID, a, b)
+			}
 		}
 	}
 }

@@ -11,7 +11,8 @@ import (
 )
 
 type sysfsBackend struct {
-	cards []sysfsCard
+	cards  []sysfsCard
+	fdinfo *fdinfoCollector
 }
 
 type sysfsCard struct {
@@ -97,7 +98,7 @@ func newSysfsBackend(excludePCI map[string]bool) *sysfsBackend {
 		return cards[i].cardIndex < cards[j].cardIndex
 	})
 
-	return &sysfsBackend{cards: cards}
+	return &sysfsBackend{cards: cards, fdinfo: newFdinfoCollector()}
 }
 
 func (s *sysfsBackend) CollectData() ([]GpuData, []ProcessData) {
@@ -132,7 +133,14 @@ func (s *sysfsBackend) CollectData() ([]GpuData, []ProcessData) {
 		gpus = append(gpus, gpu)
 	}
 
-	return gpus, nil
+	// DRM fdinfo gives APU/iGPU users a process table without rocm-smi.
+	pdevToGpu := make(map[string]int, len(s.cards))
+	for _, card := range s.cards {
+		if p := normalizePCI(card.pciBus); p != "" {
+			pdevToGpu[p] = card.cardIndex
+		}
+	}
+	return gpus, s.fdinfo.collect(pdevToGpu, procName)
 }
 
 // ── pcie_bw sysfs ──────────────────────────────────────────────────

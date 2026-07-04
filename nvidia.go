@@ -272,6 +272,7 @@ func parseNvidiaProcesses(output string, busToCard map[string]int, nameFn func(i
 				Name:     nameFn(pid),
 				GpuIDs:   []int{cardID},
 				VramUsed: vramBytes,
+				GpuBusy:  math.NaN(),
 			}
 		}
 	}

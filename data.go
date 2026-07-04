@@ -85,6 +85,7 @@ type rocmBackend struct {
 	tool      amdTool
 	cards     []rocmCard
 	sysfsMode bool // true when every discovered GPU is mapped to sysfs
+	fdinfo    *fdinfoCollector
 }
 
 // rocmCard couples one rocm-smi GPU's identity (captured at discovery) with
@@ -95,7 +96,7 @@ type rocmCard struct {
 }
 
 func newRocmBackend(tool amdTool) *rocmBackend {
-	b := &rocmBackend{tool: tool}
+	b := &rocmBackend{tool: tool, fdinfo: newFdinfoCollector()}
 	b.discover()
 	return b
 }
@@ -242,6 +243,7 @@ type ProcessData struct {
 	Name     string
 	GpuIDs   []int
 	VramUsed int64
+	GpuBusy  float64 // per-process GPU busy %; NaN when unknown
 }
 
 type RingBuffer struct {
@@ -311,6 +313,13 @@ func mergeProcesses(procs []ProcessData) []ProcessData {
 	for _, p := range procs {
 		if existing, ok := byPID[p.PID]; ok {
 			existing.VramUsed += p.VramUsed
+			if !math.IsNaN(p.GpuBusy) {
+				if math.IsNaN(existing.GpuBusy) {
+					existing.GpuBusy = p.GpuBusy
+				} else {
+					existing.GpuBusy += p.GpuBusy
+				}
+			}
 			for _, gid := range p.GpuIDs {
 				found := false
 				for _, eg := range existing.GpuIDs {
@@ -544,6 +553,7 @@ func parseProcesses(system map[string]interface{}) []ProcessData {
 				PID:      pid,
 				Name:     name,
 				VramUsed: vram,
+				GpuBusy:  math.NaN(),
 			}
 		}
 	}
@@ -999,7 +1009,13 @@ func (r *rocmBackend) CollectData() ([]GpuData, []ProcessData) {
 		r.discover()
 	}
 	if !r.sysfsMode || !r.sysfsOK() {
-		return r.tool.collectFull()
+		// Prefer fdinfo processes on the legacy path too; the tool's own
+		// process listing (already attributed) remains the fallback.
+		gpus, procs := r.tool.collectFull()
+		if fdProcs := r.fdinfo.collect(rocmPdevMap(gpus), procName); len(fdProcs) > 0 {
+			procs = fdProcs
+		}
+		return gpus, procs
 	}
 
 	gpus := make([]GpuData, 0, len(r.cards))
@@ -1013,7 +1029,30 @@ func (r *rocmBackend) CollectData() ([]GpuData, []ProcessData) {
 		collectAmdSysfsMetrics(&g, c.dev)
 		gpus = append(gpus, g)
 	}
-	return gpus, r.tool.processes()
+	return gpus, r.collectProcesses(rocmPdevMap(gpus))
+}
+
+// rocmPdevMap maps each GPU's normalized PCI address to its rocm card index
+// for fdinfo drm-pdev attribution.
+func rocmPdevMap(gpus []GpuData) map[string]int {
+	m := make(map[string]int, len(gpus))
+	for _, g := range gpus {
+		if p := normalizePCI(g.PcieBus); p != "" {
+			m[p] = g.CardID
+		}
+	}
+	return m
+}
+
+// collectProcesses prefers the DRM fdinfo collector (no exec, sees graphics
+// clients too) and falls back to the CLI tool's process listing when fdinfo
+// yields nothing — e.g. when the GPU processes belong to another uid or a
+// container whose /proc/<pid>/fd is unreadable from here.
+func (r *rocmBackend) collectProcesses(pdevToGpu map[string]int) []ProcessData {
+	if procs := r.fdinfo.collect(pdevToGpu, procName); len(procs) > 0 {
+		return procs
+	}
+	return r.tool.processes()
 }
 
 // parseRocmAll parses the main rocm-smi JSON payload ("cardN" + "system"

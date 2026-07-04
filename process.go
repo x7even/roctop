@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -35,11 +36,24 @@ func fmtBytes(b int64) string {
 }
 
 func renderProcessTable(procs []ProcessData, width int) string {
+	// The GPU% column exists only when at least one process has a known
+	// busy value (drm-engine-* fdinfo counters); without such data the
+	// table must render exactly as it did before the column was added.
+	showBusy := false
+	for _, p := range procs {
+		if !math.IsNaN(p.GpuBusy) {
+			showBusy = true
+			break
+		}
+	}
+
 	var lines []string
 	lines = append(lines, procTitle.Render("Processes"))
-	lines = append(lines,
-		procHeader.Render(fmt.Sprintf("%-8s %-20s %-12s %10s", "PID", "Name", "GPUs", "VRAM")),
-	)
+	header := fmt.Sprintf("%-8s %-20s %-12s %10s", "PID", "Name", "GPUs", "VRAM")
+	if showBusy {
+		header += fmt.Sprintf(" %6s", "GPU%")
+	}
+	lines = append(lines, procHeader.Render(header))
 
 	const maxShown = 6
 
@@ -70,6 +84,13 @@ func renderProcessTable(procs []ProcessData, width int) string {
 				fmt.Sprintf("%-20s", name) +
 				procGPU.Render(fmt.Sprintf("%-12s", gpuStr)) +
 				procVRAM.Render(fmt.Sprintf("%10s", fmtBytes(p.VramUsed)))
+			if showBusy {
+				busyStr := "-"
+				if !math.IsNaN(p.GpuBusy) {
+					busyStr = fmt.Sprintf("%.0f%%", p.GpuBusy)
+				}
+				line += procGPU.Render(fmt.Sprintf(" %6s", busyStr))
+			}
 			lines = append(lines, line)
 		}
 		if extra := len(procs) - len(shown); extra > 0 {
