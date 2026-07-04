@@ -395,6 +395,140 @@ func TestParseNvidiaGPULineWithNA(t *testing.T) {
 	}
 }
 
+func TestNvidiaBusToCardID(t *testing.T) {
+	gpus := []GpuData{
+		{CardID: 0, Backend: "nvidia", PcieBus: "00000000:C3:00.0"},
+		{CardID: 2, Backend: "nvidia", PcieBus: "00000000:83:00.0"},
+		{CardID: 3, Backend: "nvidia", PcieBus: ""}, // no bus id → omitted
+	}
+	byBus := nvidiaBusToCardID(gpus)
+	if len(byBus) != 2 {
+		t.Fatalf("len(byBus) = %d, want 2", len(byBus))
+	}
+	if id, ok := byBus["0000:c3:00.0"]; !ok || id != 0 {
+		t.Errorf("byBus[0000:c3:00.0] = %d,%v, want 0,true", id, ok)
+	}
+	if id, ok := byBus["0000:83:00.0"]; !ok || id != 2 {
+		t.Errorf("byBus[0000:83:00.0] = %d,%v, want 2,true", id, ok)
+	}
+}
+
+func TestParseNvidiaProcesses(t *testing.T) {
+	// Realistic --query-compute-apps=pid,used_gpu_memory,gpu_bus_id output:
+	// PID 1001 spans two GPUs, PID 2002 reports [N/A] memory, PID 3003 sits
+	// on a bus id that maps to no known GPU and must be skipped.
+	output := strings.Join([]string{
+		"1001, 4096, 00000000:C3:00.0",
+		"2002, [N/A], 00000000:83:00.0",
+		"1001, 2048, 00000000:83:00.0",
+		"3003, 512, 00000000:AA:00.0",
+	}, "\n")
+	busToCard := map[string]int{
+		"0000:c3:00.0": 0,
+		"0000:83:00.0": 2,
+	}
+	names := map[int]string{1001: "python3", 2002: "ollama", 3003: "ghost"}
+	nameFn := func(pid int) string { return names[pid] }
+
+	procs := parseNvidiaProcesses(output, busToCard, nameFn)
+
+	if len(procs) != 2 {
+		t.Fatalf("len(procs) = %d, want 2 (unknown bus id must be skipped)", len(procs))
+	}
+
+	// Sorted by VramUsed descending: PID 1001 (6144 MiB) before 2002 (0).
+	if procs[0].PID != 1001 || procs[1].PID != 2002 {
+		t.Fatalf("PID order = %d,%d, want 1001,2002", procs[0].PID, procs[1].PID)
+	}
+
+	p := procs[0]
+	if p.Name != "python3" {
+		t.Errorf("Name = %q, want \"python3\"", p.Name)
+	}
+	if want := int64(4096+2048) * 1024 * 1024; p.VramUsed != want {
+		t.Errorf("VramUsed = %d, want %d (MiB converted to bytes and merged)", p.VramUsed, want)
+	}
+	if len(p.GpuIDs) != 2 || p.GpuIDs[0] != 0 || p.GpuIDs[1] != 2 {
+		t.Errorf("GpuIDs = %v, want [0 2]", p.GpuIDs)
+	}
+
+	na := procs[1]
+	if na.Name != "ollama" {
+		t.Errorf("Name = %q, want \"ollama\"", na.Name)
+	}
+	if na.VramUsed != 0 {
+		t.Errorf("VramUsed = %d, want 0 for [N/A]", na.VramUsed)
+	}
+	if len(na.GpuIDs) != 1 || na.GpuIDs[0] != 2 {
+		t.Errorf("GpuIDs = %v, want [2]", na.GpuIDs)
+	}
+}
+
+func TestParseNvidiaProcessesEmpty(t *testing.T) {
+	procs := parseNvidiaProcesses("", map[string]int{"0000:c3:00.0": 0}, func(int) string { return "x" })
+	if len(procs) != 0 {
+		t.Errorf("len(procs) = %d, want 0", len(procs))
+	}
+}
+
+// ── collectGpuData ──────────────────────────────────────────────────
+
+type fakeBackend struct {
+	name  string
+	gpus  []GpuData
+	procs []ProcessData
+}
+
+func (f *fakeBackend) Name() string { return f.name }
+func (f *fakeBackend) CollectData() ([]GpuData, []ProcessData) {
+	return f.gpus, f.procs
+}
+
+func TestCollectGpuDataConcurrentDeterministic(t *testing.T) {
+	sysfs := &fakeBackend{
+		name: "sysfs",
+		gpus: []GpuData{{CardID: 0, Backend: "sysfs"}},
+	}
+	rocm := &fakeBackend{
+		name: "rocm",
+		gpus: []GpuData{{CardID: 1, Backend: "rocm"}, {CardID: 0, Backend: "rocm"}},
+		procs: []ProcessData{
+			{PID: 42, Name: "torch", GpuIDs: []int{0}, VramUsed: 100},
+		},
+	}
+	nvidia := &fakeBackend{
+		name: "nvidia",
+		gpus: []GpuData{{CardID: 0, Backend: "nvidia"}},
+		procs: []ProcessData{
+			{PID: 42, Name: "torch", GpuIDs: []int{1}, VramUsed: 50},
+		},
+	}
+
+	// Run repeatedly: goroutine scheduling must never change the result.
+	for i := 0; i < 20; i++ {
+		gpus, procs := collectGpuData([]GpuBackend{sysfs, rocm, nvidia})
+
+		wantBackends := []string{"rocm", "rocm", "nvidia", "sysfs"}
+		wantCards := []int{0, 1, 0, 0}
+		if len(gpus) != len(wantBackends) {
+			t.Fatalf("len(gpus) = %d, want %d", len(gpus), len(wantBackends))
+		}
+		for j := range gpus {
+			if gpus[j].Backend != wantBackends[j] || gpus[j].CardID != wantCards[j] {
+				t.Fatalf("gpus[%d] = %s:%d, want %s:%d",
+					j, gpus[j].Backend, gpus[j].CardID, wantBackends[j], wantCards[j])
+			}
+		}
+
+		if len(procs) != 1 {
+			t.Fatalf("len(procs) = %d, want 1 (merged by PID)", len(procs))
+		}
+		if procs[0].PID != 42 || procs[0].VramUsed != 150 || len(procs[0].GpuIDs) != 2 {
+			t.Fatalf("procs[0] = %+v, want PID 42 VramUsed 150 with 2 GpuIDs", procs[0])
+		}
+	}
+}
+
 // ── RingBuffer ──────────────────────────────────────────────────────
 
 func TestRingBuffer(t *testing.T) {

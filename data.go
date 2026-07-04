@@ -871,12 +871,29 @@ func collectStaticInfo(gpus []GpuData) {
 // ── Main collection entry point ──────────────────────────────────────
 
 func collectGpuData(backends []GpuBackend) ([]GpuData, []ProcessData) {
+	// Backends are independent processes/files with no shared state, so each
+	// CollectData runs in its own goroutine. Results land in per-backend slots
+	// to keep aggregation deterministic ahead of the sort below.
+	type backendResult struct {
+		gpus  []GpuData
+		procs []ProcessData
+	}
+	results := make([]backendResult, len(backends))
+	var wg sync.WaitGroup
+	for i, b := range backends {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			results[i].gpus, results[i].procs = b.CollectData()
+		}()
+	}
+	wg.Wait()
+
 	var allGpus []GpuData
 	var allProcs []ProcessData
-	for _, b := range backends {
-		gpus, procs := b.CollectData()
-		allGpus = append(allGpus, gpus...)
-		allProcs = append(allProcs, procs...)
+	for _, r := range results {
+		allGpus = append(allGpus, r.gpus...)
+		allProcs = append(allProcs, r.procs...)
 	}
 	sort.SliceStable(allGpus, func(i, j int) bool {
 		if allGpus[i].Backend != allGpus[j].Backend {
