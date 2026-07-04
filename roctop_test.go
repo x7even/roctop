@@ -1125,9 +1125,37 @@ func TestProcessTableNoOverflow(t *testing.T) {
 }
 
 func TestProcessTableOverflowIndicator(t *testing.T) {
+	// With >6 procs only 5 rows are shown so the "+ N more" line fits
+	// inside the fixed panel height: 9 procs → 5 shown, "+ 4 more".
 	out := renderProcessTable(makeProcs(9), 120)
-	if !strings.Contains(out, "+ 3 more") {
-		t.Errorf("expected '+ 3 more' indicator, got:\n%s", out)
+	if !strings.Contains(out, "+ 4 more") {
+		t.Errorf("expected '+ 4 more' indicator, got:\n%s", out)
+	}
+}
+
+func TestProcessTableFixedHeight(t *testing.T) {
+	// Panel height must be identical regardless of process count:
+	// 8 content rows + 2 border rows = 10 lines.
+	for _, n := range []int{0, 1, 6, 7, 30} {
+		out := renderProcessTable(makeProcs(n), 120)
+		if got := len(strings.Split(out, "\n")); got != 10 {
+			t.Errorf("procs=%d: expected 10 rendered lines, got %d:\n%s", n, got, out)
+		}
+	}
+}
+
+func TestProcessTableOverflowCount(t *testing.T) {
+	for _, tc := range []struct {
+		n    int
+		want string
+	}{
+		{7, "+ 2 more"},
+		{30, "+ 25 more"},
+	} {
+		out := renderProcessTable(makeProcs(tc.n), 120)
+		if !strings.Contains(out, tc.want) {
+			t.Errorf("procs=%d: expected %q indicator, got:\n%s", tc.n, tc.want, out)
+		}
 	}
 }
 

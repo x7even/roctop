@@ -48,7 +48,9 @@ func renderProcessTable(procs []ProcessData, width int) string {
 	} else {
 		shown := procs
 		if len(shown) > maxShown {
-			shown = shown[:maxShown]
+			// Reserve one row for the "+ N more" line so the panel
+			// never exceeds its fixed 8-row content height.
+			shown = shown[:maxShown-1]
 		}
 		for _, p := range shown {
 			sort.Ints(p.GpuIDs)
@@ -70,7 +72,7 @@ func renderProcessTable(procs []ProcessData, width int) string {
 				procVRAM.Render(fmt.Sprintf("%10s", fmtBytes(p.VramUsed)))
 			lines = append(lines, line)
 		}
-		if extra := len(procs) - maxShown; extra > 0 {
+		if extra := len(procs) - len(shown); extra > 0 {
 			lines = append(lines, dimStyle.Render(fmt.Sprintf("  + %d more", extra)))
 		}
 	}
