@@ -1,0 +1,958 @@
+[
+    {
+        "gpu": 0,
+        "process_list": [
+            {
+                "process_info": {
+                    "name": "/usr/bin/python3.12",
+                    "pid": 1882331,
+                    "memory_usage": {
+                        "gtt_mem": {
+                            "value": 6180000,
+                            "unit": "B"
+                        },
+                        "cpu_mem": {
+                            "value": 0,
+                            "unit": "B"
+                        },
+                        "vram_mem": {
+                            "value": 76000,
+                            "unit": "B"
+                        }
+                    },
+                    "mem_usage": {
+                        "value": 0,
+                        "unit": "B"
+                    },
+                    "usage": {
+                        "gfx": {
+                            "value": 0,
+                            "unit": "ns"
+                        },
+                        "enc": {
+                            "value": 0,
+                            "unit": "ns"
+                        }
+                    },
+                    "cu_occupancy": "N/A",
+                    "evicted_time": {
+                        "value": 0,
+                        "unit": "ms"
+                    }
+                }
+            },
+            {
+                "process_info": {
+                    "name": "/usr/bin/python3.12",
+                    "pid": 1883200,
+                    "memory_usage": {
+                        "gtt_mem": {
+                            "value": 6180000,
+                            "unit": "B"
+                        },
+                        "cpu_mem": {
+                            "value": 0,
+                            "unit": "B"
+                        },
+                        "vram_mem": {
+                            "value": 92000,
+                            "unit": "B"
+                        }
+                    },
+                    "mem_usage": {
+                        "value": 0,
+                        "unit": "B"
+                    },
+                    "usage": {
+                        "gfx": {
+                            "value": 0,
+                            "unit": "ns"
+                        },
+                        "enc": {
+                            "value": 0,
+                            "unit": "ns"
+                        }
+                    },
+                    "cu_occupancy": "N/A",
+                    "evicted_time": {
+                        "value": 0,
+                        "unit": "ms"
+                    }
+                }
+            },
+            {
+                "process_info": {
+                    "name": "/usr/bin/python3.12",
+                    "pid": 1883505,
+                    "memory_usage": {
+                        "gtt_mem": {
+                            "value": 8264000,
+                            "unit": "B"
+                        },
+                        "cpu_mem": {
+                            "value": 0,
+                            "unit": "B"
+                        },
+                        "vram_mem": {
+                            "value": 29429556000,
+                            "unit": "B"
+                        }
+                    },
+                    "mem_usage": {
+                        "value": 30201860096,
+                        "unit": "B"
+                    },
+                    "usage": {
+                        "gfx": {
+                            "value": 0,
+                            "unit": "ns"
+                        },
+                        "enc": {
+                            "value": 0,
+                            "unit": "ns"
+                        }
+                    },
+                    "cu_occupancy": "N/A",
+                    "evicted_time": {
+                        "value": 4,
+                        "unit": "ms"
+                    }
+                }
+            },
+            {
+                "process_info": {
+                    "name": "/usr/bin/python3.12",
+                    "pid": 1883506,
+                    "memory_usage": {
+                        "gtt_mem": {
+                            "value": 8244000,
+                            "unit": "B"
+                        },
+                        "cpu_mem": {
+                            "value": 0,
+                            "unit": "B"
+                        },
+                        "vram_mem": {
+                            "value": 28964616000,
+                            "unit": "B"
+                        }
+                    },
+                    "mem_usage": {
+                        "value": 0,
+                        "unit": "B"
+                    },
+                    "usage": {
+                        "gfx": {
+                            "value": 0,
+                            "unit": "ns"
+                        },
+                        "enc": {
+                            "value": 0,
+                            "unit": "ns"
+                        }
+                    },
+                    "cu_occupancy": "N/A",
+                    "evicted_time": {
+                        "value": 4,
+                        "unit": "ms"
+                    }
+                }
+            },
+            {
+                "process_info": {
+                    "name": "/usr/bin/python3.12",
+                    "pid": 1883507,
+                    "memory_usage": {
+                        "gtt_mem": {
+                            "value": 8244000,
+                            "unit": "B"
+                        },
+                        "cpu_mem": {
+                            "value": 0,
+                            "unit": "B"
+                        },
+                        "vram_mem": {
+                            "value": 28964624000,
+                            "unit": "B"
+                        }
+                    },
+                    "mem_usage": {
+                        "value": 0,
+                        "unit": "B"
+                    },
+                    "usage": {
+                        "gfx": {
+                            "value": 0,
+                            "unit": "ns"
+                        },
+                        "enc": {
+                            "value": 0,
+                            "unit": "ns"
+                        }
+                    },
+                    "cu_occupancy": "N/A",
+                    "evicted_time": {
+                        "value": 0,
+                        "unit": "ms"
+                    }
+                }
+            },
+            {
+                "process_info": {
+                    "name": "/usr/bin/python3.12",
+                    "pid": 1883508,
+                    "memory_usage": {
+                        "gtt_mem": {
+                            "value": 8244000,
+                            "unit": "B"
+                        },
+                        "cpu_mem": {
+                            "value": 0,
+                            "unit": "B"
+                        },
+                        "vram_mem": {
+                            "value": 28899092000,
+                            "unit": "B"
+                        }
+                    },
+                    "mem_usage": {
+                        "value": 0,
+                        "unit": "B"
+                    },
+                    "usage": {
+                        "gfx": {
+                            "value": 0,
+                            "unit": "ns"
+                        },
+                        "enc": {
+                            "value": 0,
+                            "unit": "ns"
+                        }
+                    },
+                    "cu_occupancy": "N/A",
+                    "evicted_time": {
+                        "value": 34,
+                        "unit": "ms"
+                    }
+                }
+            }
+        ]
+    },
+    {
+        "gpu": 1,
+        "process_list": [
+            {
+                "process_info": {
+                    "name": "/usr/bin/python3.12",
+                    "pid": 1882331,
+                    "memory_usage": {
+                        "gtt_mem": {
+                            "value": 6180000,
+                            "unit": "B"
+                        },
+                        "cpu_mem": {
+                            "value": 0,
+                            "unit": "B"
+                        },
+                        "vram_mem": {
+                            "value": 76000,
+                            "unit": "B"
+                        }
+                    },
+                    "mem_usage": {
+                        "value": 0,
+                        "unit": "B"
+                    },
+                    "usage": {
+                        "gfx": {
+                            "value": 0,
+                            "unit": "ns"
+                        },
+                        "enc": {
+                            "value": 0,
+                            "unit": "ns"
+                        }
+                    },
+                    "cu_occupancy": "N/A",
+                    "evicted_time": {
+                        "value": 0,
+                        "unit": "ms"
+                    }
+                }
+            },
+            {
+                "process_info": {
+                    "name": "/usr/bin/python3.12",
+                    "pid": 1883200,
+                    "memory_usage": {
+                        "gtt_mem": {
+                            "value": 6180000,
+                            "unit": "B"
+                        },
+                        "cpu_mem": {
+                            "value": 0,
+                            "unit": "B"
+                        },
+                        "vram_mem": {
+                            "value": 92000,
+                            "unit": "B"
+                        }
+                    },
+                    "mem_usage": {
+                        "value": 0,
+                        "unit": "B"
+                    },
+                    "usage": {
+                        "gfx": {
+                            "value": 0,
+                            "unit": "ns"
+                        },
+                        "enc": {
+                            "value": 0,
+                            "unit": "ns"
+                        }
+                    },
+                    "cu_occupancy": "N/A",
+                    "evicted_time": {
+                        "value": 0,
+                        "unit": "ms"
+                    }
+                }
+            },
+            {
+                "process_info": {
+                    "name": "/usr/bin/python3.12",
+                    "pid": 1883505,
+                    "memory_usage": {
+                        "gtt_mem": {
+                            "value": 8264000,
+                            "unit": "B"
+                        },
+                        "cpu_mem": {
+                            "value": 0,
+                            "unit": "B"
+                        },
+                        "vram_mem": {
+                            "value": 29429556000,
+                            "unit": "B"
+                        }
+                    },
+                    "mem_usage": {
+                        "value": 30201860096,
+                        "unit": "B"
+                    },
+                    "usage": {
+                        "gfx": {
+                            "value": 0,
+                            "unit": "ns"
+                        },
+                        "enc": {
+                            "value": 0,
+                            "unit": "ns"
+                        }
+                    },
+                    "cu_occupancy": "N/A",
+                    "evicted_time": {
+                        "value": 4,
+                        "unit": "ms"
+                    }
+                }
+            },
+            {
+                "process_info": {
+                    "name": "/usr/bin/python3.12",
+                    "pid": 1883506,
+                    "memory_usage": {
+                        "gtt_mem": {
+                            "value": 8244000,
+                            "unit": "B"
+                        },
+                        "cpu_mem": {
+                            "value": 0,
+                            "unit": "B"
+                        },
+                        "vram_mem": {
+                            "value": 28964616000,
+                            "unit": "B"
+                        }
+                    },
+                    "mem_usage": {
+                        "value": 0,
+                        "unit": "B"
+                    },
+                    "usage": {
+                        "gfx": {
+                            "value": 0,
+                            "unit": "ns"
+                        },
+                        "enc": {
+                            "value": 0,
+                            "unit": "ns"
+                        }
+                    },
+                    "cu_occupancy": "N/A",
+                    "evicted_time": {
+                        "value": 4,
+                        "unit": "ms"
+                    }
+                }
+            },
+            {
+                "process_info": {
+                    "name": "/usr/bin/python3.12",
+                    "pid": 1883507,
+                    "memory_usage": {
+                        "gtt_mem": {
+                            "value": 8244000,
+                            "unit": "B"
+                        },
+                        "cpu_mem": {
+                            "value": 0,
+                            "unit": "B"
+                        },
+                        "vram_mem": {
+                            "value": 28964624000,
+                            "unit": "B"
+                        }
+                    },
+                    "mem_usage": {
+                        "value": 0,
+                        "unit": "B"
+                    },
+                    "usage": {
+                        "gfx": {
+                            "value": 0,
+                            "unit": "ns"
+                        },
+                        "enc": {
+                            "value": 0,
+                            "unit": "ns"
+                        }
+                    },
+                    "cu_occupancy": "N/A",
+                    "evicted_time": {
+                        "value": 0,
+                        "unit": "ms"
+                    }
+                }
+            },
+            {
+                "process_info": {
+                    "name": "/usr/bin/python3.12",
+                    "pid": 1883508,
+                    "memory_usage": {
+                        "gtt_mem": {
+                            "value": 8244000,
+                            "unit": "B"
+                        },
+                        "cpu_mem": {
+                            "value": 0,
+                            "unit": "B"
+                        },
+                        "vram_mem": {
+                            "value": 28899092000,
+                            "unit": "B"
+                        }
+                    },
+                    "mem_usage": {
+                        "value": 0,
+                        "unit": "B"
+                    },
+                    "usage": {
+                        "gfx": {
+                            "value": 0,
+                            "unit": "ns"
+                        },
+                        "enc": {
+                            "value": 0,
+                            "unit": "ns"
+                        }
+                    },
+                    "cu_occupancy": "N/A",
+                    "evicted_time": {
+                        "value": 34,
+                        "unit": "ms"
+                    }
+                }
+            }
+        ]
+    },
+    {
+        "gpu": 2,
+        "process_list": [
+            {
+                "process_info": {
+                    "name": "/usr/bin/python3.12",
+                    "pid": 1882331,
+                    "memory_usage": {
+                        "gtt_mem": {
+                            "value": 6180000,
+                            "unit": "B"
+                        },
+                        "cpu_mem": {
+                            "value": 0,
+                            "unit": "B"
+                        },
+                        "vram_mem": {
+                            "value": 76000,
+                            "unit": "B"
+                        }
+                    },
+                    "mem_usage": {
+                        "value": 0,
+                        "unit": "B"
+                    },
+                    "usage": {
+                        "gfx": {
+                            "value": 0,
+                            "unit": "ns"
+                        },
+                        "enc": {
+                            "value": 0,
+                            "unit": "ns"
+                        }
+                    },
+                    "cu_occupancy": "N/A",
+                    "evicted_time": {
+                        "value": 0,
+                        "unit": "ms"
+                    }
+                }
+            },
+            {
+                "process_info": {
+                    "name": "/usr/bin/python3.12",
+                    "pid": 1883200,
+                    "memory_usage": {
+                        "gtt_mem": {
+                            "value": 6180000,
+                            "unit": "B"
+                        },
+                        "cpu_mem": {
+                            "value": 0,
+                            "unit": "B"
+                        },
+                        "vram_mem": {
+                            "value": 92000,
+                            "unit": "B"
+                        }
+                    },
+                    "mem_usage": {
+                        "value": 0,
+                        "unit": "B"
+                    },
+                    "usage": {
+                        "gfx": {
+                            "value": 0,
+                            "unit": "ns"
+                        },
+                        "enc": {
+                            "value": 0,
+                            "unit": "ns"
+                        }
+                    },
+                    "cu_occupancy": "N/A",
+                    "evicted_time": {
+                        "value": 0,
+                        "unit": "ms"
+                    }
+                }
+            },
+            {
+                "process_info": {
+                    "name": "/usr/bin/python3.12",
+                    "pid": 1883505,
+                    "memory_usage": {
+                        "gtt_mem": {
+                            "value": 8264000,
+                            "unit": "B"
+                        },
+                        "cpu_mem": {
+                            "value": 0,
+                            "unit": "B"
+                        },
+                        "vram_mem": {
+                            "value": 29429556000,
+                            "unit": "B"
+                        }
+                    },
+                    "mem_usage": {
+                        "value": 30201860096,
+                        "unit": "B"
+                    },
+                    "usage": {
+                        "gfx": {
+                            "value": 0,
+                            "unit": "ns"
+                        },
+                        "enc": {
+                            "value": 0,
+                            "unit": "ns"
+                        }
+                    },
+                    "cu_occupancy": "N/A",
+                    "evicted_time": {
+                        "value": 4,
+                        "unit": "ms"
+                    }
+                }
+            },
+            {
+                "process_info": {
+                    "name": "/usr/bin/python3.12",
+                    "pid": 1883506,
+                    "memory_usage": {
+                        "gtt_mem": {
+                            "value": 8244000,
+                            "unit": "B"
+                        },
+                        "cpu_mem": {
+                            "value": 0,
+                            "unit": "B"
+                        },
+                        "vram_mem": {
+                            "value": 28964616000,
+                            "unit": "B"
+                        }
+                    },
+                    "mem_usage": {
+                        "value": 0,
+                        "unit": "B"
+                    },
+                    "usage": {
+                        "gfx": {
+                            "value": 0,
+                            "unit": "ns"
+                        },
+                        "enc": {
+                            "value": 0,
+                            "unit": "ns"
+                        }
+                    },
+                    "cu_occupancy": "N/A",
+                    "evicted_time": {
+                        "value": 4,
+                        "unit": "ms"
+                    }
+                }
+            },
+            {
+                "process_info": {
+                    "name": "/usr/bin/python3.12",
+                    "pid": 1883507,
+                    "memory_usage": {
+                        "gtt_mem": {
+                            "value": 8244000,
+                            "unit": "B"
+                        },
+                        "cpu_mem": {
+                            "value": 0,
+                            "unit": "B"
+                        },
+                        "vram_mem": {
+                            "value": 28964624000,
+                            "unit": "B"
+                        }
+                    },
+                    "mem_usage": {
+                        "value": 0,
+                        "unit": "B"
+                    },
+                    "usage": {
+                        "gfx": {
+                            "value": 0,
+                            "unit": "ns"
+                        },
+                        "enc": {
+                            "value": 0,
+                            "unit": "ns"
+                        }
+                    },
+                    "cu_occupancy": "N/A",
+                    "evicted_time": {
+                        "value": 0,
+                        "unit": "ms"
+                    }
+                }
+            },
+            {
+                "process_info": {
+                    "name": "/usr/bin/python3.12",
+                    "pid": 1883508,
+                    "memory_usage": {
+                        "gtt_mem": {
+                            "value": 8244000,
+                            "unit": "B"
+                        },
+                        "cpu_mem": {
+                            "value": 0,
+                            "unit": "B"
+                        },
+                        "vram_mem": {
+                            "value": 28899092000,
+                            "unit": "B"
+                        }
+                    },
+                    "mem_usage": {
+                        "value": 0,
+                        "unit": "B"
+                    },
+                    "usage": {
+                        "gfx": {
+                            "value": 0,
+                            "unit": "ns"
+                        },
+                        "enc": {
+                            "value": 0,
+                            "unit": "ns"
+                        }
+                    },
+                    "cu_occupancy": "N/A",
+                    "evicted_time": {
+                        "value": 34,
+                        "unit": "ms"
+                    }
+                }
+            }
+        ]
+    },
+    {
+        "gpu": 3,
+        "process_list": [
+            {
+                "process_info": {
+                    "name": "/usr/bin/python3.12",
+                    "pid": 1882331,
+                    "memory_usage": {
+                        "gtt_mem": {
+                            "value": 6180000,
+                            "unit": "B"
+                        },
+                        "cpu_mem": {
+                            "value": 0,
+                            "unit": "B"
+                        },
+                        "vram_mem": {
+                            "value": 76000,
+                            "unit": "B"
+                        }
+                    },
+                    "mem_usage": {
+                        "value": 0,
+                        "unit": "B"
+                    },
+                    "usage": {
+                        "gfx": {
+                            "value": 0,
+                            "unit": "ns"
+                        },
+                        "enc": {
+                            "value": 0,
+                            "unit": "ns"
+                        }
+                    },
+                    "cu_occupancy": "N/A",
+                    "evicted_time": {
+                        "value": 0,
+                        "unit": "ms"
+                    }
+                }
+            },
+            {
+                "process_info": {
+                    "name": "/usr/bin/python3.12",
+                    "pid": 1883200,
+                    "memory_usage": {
+                        "gtt_mem": {
+                            "value": 6180000,
+                            "unit": "B"
+                        },
+                        "cpu_mem": {
+                            "value": 0,
+                            "unit": "B"
+                        },
+                        "vram_mem": {
+                            "value": 92000,
+                            "unit": "B"
+                        }
+                    },
+                    "mem_usage": {
+                        "value": 0,
+                        "unit": "B"
+                    },
+                    "usage": {
+                        "gfx": {
+                            "value": 0,
+                            "unit": "ns"
+                        },
+                        "enc": {
+                            "value": 0,
+                            "unit": "ns"
+                        }
+                    },
+                    "cu_occupancy": "N/A",
+                    "evicted_time": {
+                        "value": 0,
+                        "unit": "ms"
+                    }
+                }
+            },
+            {
+                "process_info": {
+                    "name": "/usr/bin/python3.12",
+                    "pid": 1883505,
+                    "memory_usage": {
+                        "gtt_mem": {
+                            "value": 8264000,
+                            "unit": "B"
+                        },
+                        "cpu_mem": {
+                            "value": 0,
+                            "unit": "B"
+                        },
+                        "vram_mem": {
+                            "value": 29429556000,
+                            "unit": "B"
+                        }
+                    },
+                    "mem_usage": {
+                        "value": 30201860096,
+                        "unit": "B"
+                    },
+                    "usage": {
+                        "gfx": {
+                            "value": 0,
+                            "unit": "ns"
+                        },
+                        "enc": {
+                            "value": 0,
+                            "unit": "ns"
+                        }
+                    },
+                    "cu_occupancy": "N/A",
+                    "evicted_time": {
+                        "value": 4,
+                        "unit": "ms"
+                    }
+                }
+            },
+            {
+                "process_info": {
+                    "name": "/usr/bin/python3.12",
+                    "pid": 1883506,
+                    "memory_usage": {
+                        "gtt_mem": {
+                            "value": 8244000,
+                            "unit": "B"
+                        },
+                        "cpu_mem": {
+                            "value": 0,
+                            "unit": "B"
+                        },
+                        "vram_mem": {
+                            "value": 28964616000,
+                            "unit": "B"
+                        }
+                    },
+                    "mem_usage": {
+                        "value": 0,
+                        "unit": "B"
+                    },
+                    "usage": {
+                        "gfx": {
+                            "value": 0,
+                            "unit": "ns"
+                        },
+                        "enc": {
+                            "value": 0,
+                            "unit": "ns"
+                        }
+                    },
+                    "cu_occupancy": "N/A",
+                    "evicted_time": {
+                        "value": 4,
+                        "unit": "ms"
+                    }
+                }
+            },
+            {
+                "process_info": {
+                    "name": "/usr/bin/python3.12",
+                    "pid": 1883507,
+                    "memory_usage": {
+                        "gtt_mem": {
+                            "value": 8244000,
+                            "unit": "B"
+                        },
+                        "cpu_mem": {
+                            "value": 0,
+                            "unit": "B"
+                        },
+                        "vram_mem": {
+                            "value": 28964624000,
+                            "unit": "B"
+                        }
+                    },
+                    "mem_usage": {
+                        "value": 0,
+                        "unit": "B"
+                    },
+                    "usage": {
+                        "gfx": {
+                            "value": 0,
+                            "unit": "ns"
+                        },
+                        "enc": {
+                            "value": 0,
+                            "unit": "ns"
+                        }
+                    },
+                    "cu_occupancy": "N/A",
+                    "evicted_time": {
+                        "value": 0,
+                        "unit": "ms"
+                    }
+                }
+            },
+            {
+                "process_info": {
+                    "name": "/usr/bin/python3.12",
+                    "pid": 1883508,
+                    "memory_usage": {
+                        "gtt_mem": {
+                            "value": 8244000,
+                            "unit": "B"
+                        },
+                        "cpu_mem": {
+                            "value": 0,
+                            "unit": "B"
+                        },
+                        "vram_mem": {
+                            "value": 28899092000,
+                            "unit": "B"
+                        }
+                    },
+                    "mem_usage": {
+                        "value": 0,
+                        "unit": "B"
+                    },
+                    "usage": {
+                        "gfx": {
+                            "value": 0,
+                            "unit": "ns"
+                        },
+                        "enc": {
+                            "value": 0,
+                            "unit": "ns"
+                        }
+                    },
+                    "cu_occupancy": "N/A",
+                    "evicted_time": {
+                        "value": 34,
+                        "unit": "ms"
+                    }
+                }
+            }
+        ]
+    }
+]

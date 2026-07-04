@@ -1972,6 +1972,7 @@ func TestRocmBackendConcurrentCollect(t *testing.T) {
 	t.Setenv("PATH", binDir)
 
 	b := &rocmBackend{
+		tool:      newRocmSMITool(),
 		sysfsMode: true,
 		cards: []rocmCard{{
 			identity: GpuData{CardID: 0, Backend: "rocm", Name: "stale"},
@@ -2000,7 +2001,7 @@ func TestLiveRocmSysfsBackend(t *testing.T) {
 	if _, err := exec.LookPath("rocm-smi"); err != nil {
 		t.Skip("rocm-smi not installed")
 	}
-	b := newRocmBackend()
+	b := newRocmBackend(newRocmSMITool())
 	if len(b.cards) == 0 {
 		t.Skip("rocm-smi reported no GPUs")
 	}

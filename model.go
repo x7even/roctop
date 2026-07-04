@@ -131,11 +131,11 @@ func fetchDataCmd(backends []GpuBackend) tea.Cmd {
 	}
 }
 
-func fetchStaticInfoCmd(gpus []GpuData) tea.Cmd {
+func fetchStaticInfoCmd(backends []GpuBackend, gpus []GpuData) tea.Cmd {
 	snapshot := make([]GpuData, len(gpus))
 	copy(snapshot, gpus)
 	return func() tea.Msg {
-		collectStaticInfo(snapshot)
+		collectStaticInfo(backends, snapshot)
 		return staticInfoMsg(snapshot)
 	}
 }
@@ -363,7 +363,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if !m.staticFetched && len(m.gpus) > 0 {
 			m.staticFetched = true
-			return m, fetchStaticInfoCmd(m.gpus)
+			return m, fetchStaticInfoCmd(m.backends, m.gpus)
 		}
 
 	case staticInfoMsg:

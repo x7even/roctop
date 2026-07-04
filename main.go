@@ -26,11 +26,12 @@ func detectBackends() ([]GpuBackend, []GpuData, []ProcessData) {
 	var allProcs []ProcessData
 	claimedPCI := make(map[string]bool)
 
-	if _, err := exec.LookPath("rocm-smi"); err == nil {
-		b := newRocmBackend()
+	if tool := selectAmdTool(); tool != nil {
+		b := newRocmBackend(*tool)
 		if len(b.cards) == 0 {
-			logf("warning: rocm-smi found but returned no GPUs; skipping rocm backend")
+			logf("warning: %s found but returned no GPUs; skipping rocm backend", tool.name)
 		} else {
+			logf("rocm backend using %s", tool.name)
 			for _, c := range b.cards {
 				if c.identity.PcieBus != "" {
 					claimedPCI[normalizePCI(c.identity.PcieBus)] = true

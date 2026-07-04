@@ -1,0 +1,1284 @@
+{
+    "gpu_data": [
+        {
+            "gpu": 0,
+            "asic": {
+                "market_name": "AMD Radeon AI PRO R9700",
+                "vendor_id": "0x1002",
+                "vendor_name": "Advanced Micro Devices Inc. [AMD/ATI]",
+                "subvendor_id": "0x1849",
+                "device_id": "0x7551",
+                "subsystem_id": "0x5413",
+                "rev_id": "0xc0",
+                "asic_serial": "0x64AC21A676F77A5B",
+                "oam_id": "N/A",
+                "num_compute_units": 64,
+                "target_graphics_version": "gfx1201"
+            },
+            "bus": {
+                "bdf": "0000:03:00.0",
+                "max_pcie_width": 16,
+                "max_pcie_speed": {
+                    "value": 32,
+                    "unit": "GT/s"
+                },
+                "pcie_levels": {
+                    "0": [
+                        "2.5 GT/s",
+                        "16"
+                    ],
+                    "1": [
+                        "16.0 GT/s",
+                        "16"
+                    ],
+                    "2": [
+                        "32.0 GT/s",
+                        "16"
+                    ]
+                },
+                "pcie_interface_version": "Gen 5",
+                "slot_type": "CEM"
+            },
+            "ifwi": {
+                "name": "ASRock Navi48 XTW 32GB 300W IFWI",
+                "build_date": "2025/06/02 00:27",
+                "part_number": "113-APM107573-100",
+                "version": "00153000"
+            },
+            "limit": {
+                "ppt0": {
+                    "max_power_limit": {
+                        "value": 300,
+                        "unit": "W"
+                    },
+                    "min_power_limit": {
+                        "value": 210,
+                        "unit": "W"
+                    },
+                    "socket_power_limit": {
+                        "value": 300,
+                        "unit": "W"
+                    }
+                },
+                "ppt1": {
+                    "max_power_limit": "N/A",
+                    "min_power_limit": "N/A",
+                    "socket_power_limit": "N/A"
+                },
+                "slowdown_edge_temperature": {
+                    "value": 110,
+                    "unit": "C"
+                },
+                "slowdown_hotspot_temperature": {
+                    "value": 110,
+                    "unit": "C"
+                },
+                "slowdown_vram_temperature": {
+                    "value": 108,
+                    "unit": "C"
+                },
+                "shutdown_edge_temperature": {
+                    "value": 115,
+                    "unit": "C"
+                },
+                "shutdown_hotspot_temperature": {
+                    "value": 115,
+                    "unit": "C"
+                },
+                "shutdown_vram_temperature": {
+                    "value": 113,
+                    "unit": "C"
+                },
+                "ptl_state": "N/A",
+                "ptl_format": "N/A"
+            },
+            "driver": {
+                "name": "amdgpu",
+                "version": "6.16.6"
+            },
+            "board": {
+                "model_number": "N/A",
+                "product_serial": "N/A",
+                "fru_id": "N/A",
+                "product_name": "N/A",
+                "manufacturer_name": "Advanced Micro Devices, Inc. [AMD/ATI]"
+            },
+            "ras": {
+                "eeprom_version": "0x10000",
+                "bad_page_threshold": "N/A",
+                "bad_page_threshold_exceeded": "N/A",
+                "parity_schema": "ENABLED",
+                "single_bit_schema": "ENABLED",
+                "double_bit_schema": "ENABLED",
+                "poison_schema": "DISABLED",
+                "ecc_block_state": {
+                    "UMC": "ENABLED",
+                    "SDMA": "DISABLED",
+                    "GFX": "DISABLED",
+                    "MMHUB": "DISABLED",
+                    "ATHUB": "DISABLED",
+                    "PCIE_BIF": "DISABLED",
+                    "HDP": "DISABLED",
+                    "XGMI_WAFL": "DISABLED",
+                    "DF": "ENABLED",
+                    "SMN": "DISABLED",
+                    "SEM": "DISABLED",
+                    "MP0": "DISABLED",
+                    "MP1": "DISABLED",
+                    "FUSE": "DISABLED",
+                    "MCA": "DISABLED",
+                    "VCN": "DISABLED",
+                    "JPEG": "DISABLED",
+                    "IH": "DISABLED",
+                    "MPIO": "DISABLED"
+                }
+            },
+            "soc_pstate": "N/A",
+            "xgmi_plpd": "N/A",
+            "process_isolation": "Disabled",
+            "numa": {
+                "node": 0,
+                "affinity": -1,
+                "cpu_affinity": "N/A",
+                "socket_affinity": "N/A"
+            },
+            "vram": {
+                "type": "GDDR6",
+                "vendor": "SAMSUNG",
+                "size": {
+                    "value": 32624,
+                    "unit": "MB"
+                },
+                "bit_width": 256,
+                "max_bandwidth": {
+                    "value": "N/A",
+                    "unit": "GB/s"
+                }
+            },
+            "cache_info": [
+                {
+                    "cache": 0,
+                    "cache_properties": [
+                        "DATA_CACHE",
+                        "SIMD_CACHE"
+                    ],
+                    "cache_size": {
+                        "value": 32,
+                        "unit": "KB"
+                    },
+                    "cache_level": 1,
+                    "max_num_cu_shared": 1,
+                    "num_cache_instance": 64
+                },
+                {
+                    "cache": 1,
+                    "cache_properties": [
+                        "INST_CACHE",
+                        "SIMD_CACHE"
+                    ],
+                    "cache_size": {
+                        "value": 32,
+                        "unit": "KB"
+                    },
+                    "cache_level": 1,
+                    "max_num_cu_shared": 2,
+                    "num_cache_instance": 32
+                },
+                {
+                    "cache": 2,
+                    "cache_properties": [
+                        "DATA_CACHE",
+                        "SIMD_CACHE"
+                    ],
+                    "cache_size": {
+                        "value": 16,
+                        "unit": "KB"
+                    },
+                    "cache_level": 1,
+                    "max_num_cu_shared": 2,
+                    "num_cache_instance": 32
+                },
+                {
+                    "cache": 3,
+                    "cache_properties": [
+                        "DATA_CACHE",
+                        "SIMD_CACHE"
+                    ],
+                    "cache_size": {
+                        "value": 256,
+                        "unit": "KB"
+                    },
+                    "cache_level": 1,
+                    "max_num_cu_shared": 8,
+                    "num_cache_instance": 8
+                },
+                {
+                    "cache": 4,
+                    "cache_properties": [
+                        "DATA_CACHE",
+                        "SIMD_CACHE"
+                    ],
+                    "cache_size": {
+                        "value": 8192,
+                        "unit": "KB"
+                    },
+                    "cache_level": 2,
+                    "max_num_cu_shared": 64,
+                    "num_cache_instance": 1
+                },
+                {
+                    "cache": 5,
+                    "cache_properties": [
+                        "DATA_CACHE",
+                        "SIMD_CACHE"
+                    ],
+                    "cache_size": {
+                        "value": 65536,
+                        "unit": "KB"
+                    },
+                    "cache_level": 3,
+                    "max_num_cu_shared": 64,
+                    "num_cache_instance": 1
+                }
+            ],
+            "clock": {
+                "sys": {
+                    "current_level": 1,
+                    "current_frequency": "3422MHz",
+                    "frequency_levels": {
+                        "Level 0": "500 MHz",
+                        "Level 1": "3422 MHz",
+                        "Level 2": "2350 MHz"
+                    }
+                },
+                "mem": {
+                    "current_level": 0,
+                    "current_frequency": "96MHz",
+                    "frequency_levels": {
+                        "Level 0": "96 MHz",
+                        "Level 1": "456 MHz",
+                        "Level 2": "772 MHz",
+                        "Level 3": "875 MHz",
+                        "Level 4": "1124 MHz",
+                        "Level 5": "1258 MHz"
+                    }
+                },
+                "df": {
+                    "current_level": 1,
+                    "current_frequency": "2037MHz",
+                    "frequency_levels": {
+                        "Level 0": "313 MHz",
+                        "Level 1": "2037 MHz",
+                        "Level 2": "2400 MHz"
+                    }
+                },
+                "soc": {
+                    "current_level": 1,
+                    "current_frequency": "1280MHz",
+                    "frequency_levels": {
+                        "Level 0": "417 MHz",
+                        "Level 1": "1280 MHz",
+                        "Level 2": "1476 MHz"
+                    }
+                },
+                "dcef": {
+                    "current_level": 1,
+                    "current_frequency": "219MHz",
+                    "frequency_levels": {
+                        "Level 0": "147 MHz",
+                        "Level 1": "219 MHz",
+                        "Level 2": "1800 MHz"
+                    }
+                },
+                "vclk0": {
+                    "current_level": 0,
+                    "current_frequency": "25MHz",
+                    "frequency_levels": {
+                        "Level 0": "25 MHz"
+                    }
+                },
+                "vclk1": {
+                    "current_level": 0,
+                    "current_frequency": "25MHz",
+                    "frequency_levels": {
+                        "Level 0": "25 MHz"
+                    }
+                },
+                "dclk0": {
+                    "current_level": 0,
+                    "current_frequency": "25MHz",
+                    "frequency_levels": {
+                        "Level 0": "25 MHz"
+                    }
+                },
+                "dclk1": {
+                    "current_level": 0,
+                    "current_frequency": "25MHz",
+                    "frequency_levels": {
+                        "Level 0": "25 MHz"
+                    }
+                }
+            }
+        },
+        {
+            "gpu": 1,
+            "asic": {
+                "market_name": "AMD Radeon AI PRO R9700",
+                "vendor_id": "0x1002",
+                "vendor_name": "Advanced Micro Devices Inc. [AMD/ATI]",
+                "subvendor_id": "0x1849",
+                "device_id": "0x7551",
+                "subsystem_id": "0x5413",
+                "rev_id": "0xc0",
+                "asic_serial": "0x10DB7231938F80D6",
+                "oam_id": "N/A",
+                "num_compute_units": 64,
+                "target_graphics_version": "gfx1201"
+            },
+            "bus": {
+                "bdf": "0000:23:00.0",
+                "max_pcie_width": 16,
+                "max_pcie_speed": {
+                    "value": 32,
+                    "unit": "GT/s"
+                },
+                "pcie_levels": {
+                    "0": [
+                        "2.5 GT/s",
+                        "16"
+                    ],
+                    "1": [
+                        "16.0 GT/s",
+                        "16"
+                    ],
+                    "2": [
+                        "32.0 GT/s",
+                        "16"
+                    ]
+                },
+                "pcie_interface_version": "Gen 5",
+                "slot_type": "CEM"
+            },
+            "ifwi": {
+                "name": "ASRock Navi48 XTW 32GB 300W IFWI",
+                "build_date": "2025/07/25 01:42",
+                "part_number": "113-APM107573-101",
+                "version": "00158738"
+            },
+            "limit": {
+                "ppt0": {
+                    "max_power_limit": {
+                        "value": 300,
+                        "unit": "W"
+                    },
+                    "min_power_limit": {
+                        "value": 210,
+                        "unit": "W"
+                    },
+                    "socket_power_limit": {
+                        "value": 300,
+                        "unit": "W"
+                    }
+                },
+                "ppt1": {
+                    "max_power_limit": "N/A",
+                    "min_power_limit": "N/A",
+                    "socket_power_limit": "N/A"
+                },
+                "slowdown_edge_temperature": {
+                    "value": 110,
+                    "unit": "C"
+                },
+                "slowdown_hotspot_temperature": {
+                    "value": 110,
+                    "unit": "C"
+                },
+                "slowdown_vram_temperature": {
+                    "value": 108,
+                    "unit": "C"
+                },
+                "shutdown_edge_temperature": {
+                    "value": 115,
+                    "unit": "C"
+                },
+                "shutdown_hotspot_temperature": {
+                    "value": 115,
+                    "unit": "C"
+                },
+                "shutdown_vram_temperature": {
+                    "value": 113,
+                    "unit": "C"
+                },
+                "ptl_state": "N/A",
+                "ptl_format": "N/A"
+            },
+            "driver": {
+                "name": "amdgpu",
+                "version": "6.16.6"
+            },
+            "board": {
+                "model_number": "N/A",
+                "product_serial": "N/A",
+                "fru_id": "N/A",
+                "product_name": "N/A",
+                "manufacturer_name": "Advanced Micro Devices, Inc. [AMD/ATI]"
+            },
+            "ras": {
+                "eeprom_version": "0x10000",
+                "bad_page_threshold": "N/A",
+                "bad_page_threshold_exceeded": "N/A",
+                "parity_schema": "ENABLED",
+                "single_bit_schema": "ENABLED",
+                "double_bit_schema": "ENABLED",
+                "poison_schema": "DISABLED",
+                "ecc_block_state": {
+                    "UMC": "ENABLED",
+                    "SDMA": "DISABLED",
+                    "GFX": "DISABLED",
+                    "MMHUB": "DISABLED",
+                    "ATHUB": "DISABLED",
+                    "PCIE_BIF": "DISABLED",
+                    "HDP": "DISABLED",
+                    "XGMI_WAFL": "DISABLED",
+                    "DF": "ENABLED",
+                    "SMN": "DISABLED",
+                    "SEM": "DISABLED",
+                    "MP0": "DISABLED",
+                    "MP1": "DISABLED",
+                    "FUSE": "DISABLED",
+                    "MCA": "DISABLED",
+                    "VCN": "DISABLED",
+                    "JPEG": "DISABLED",
+                    "IH": "DISABLED",
+                    "MPIO": "DISABLED"
+                }
+            },
+            "soc_pstate": "N/A",
+            "xgmi_plpd": "N/A",
+            "process_isolation": "Disabled",
+            "numa": {
+                "node": 0,
+                "affinity": -1,
+                "cpu_affinity": "N/A",
+                "socket_affinity": "N/A"
+            },
+            "vram": {
+                "type": "GDDR6",
+                "vendor": "SAMSUNG",
+                "size": {
+                    "value": 32624,
+                    "unit": "MB"
+                },
+                "bit_width": 256,
+                "max_bandwidth": {
+                    "value": "N/A",
+                    "unit": "GB/s"
+                }
+            },
+            "cache_info": [
+                {
+                    "cache": 0,
+                    "cache_properties": [
+                        "DATA_CACHE",
+                        "SIMD_CACHE"
+                    ],
+                    "cache_size": {
+                        "value": 32,
+                        "unit": "KB"
+                    },
+                    "cache_level": 1,
+                    "max_num_cu_shared": 1,
+                    "num_cache_instance": 64
+                },
+                {
+                    "cache": 1,
+                    "cache_properties": [
+                        "INST_CACHE",
+                        "SIMD_CACHE"
+                    ],
+                    "cache_size": {
+                        "value": 32,
+                        "unit": "KB"
+                    },
+                    "cache_level": 1,
+                    "max_num_cu_shared": 2,
+                    "num_cache_instance": 32
+                },
+                {
+                    "cache": 2,
+                    "cache_properties": [
+                        "DATA_CACHE",
+                        "SIMD_CACHE"
+                    ],
+                    "cache_size": {
+                        "value": 16,
+                        "unit": "KB"
+                    },
+                    "cache_level": 1,
+                    "max_num_cu_shared": 2,
+                    "num_cache_instance": 32
+                },
+                {
+                    "cache": 3,
+                    "cache_properties": [
+                        "DATA_CACHE",
+                        "SIMD_CACHE"
+                    ],
+                    "cache_size": {
+                        "value": 256,
+                        "unit": "KB"
+                    },
+                    "cache_level": 1,
+                    "max_num_cu_shared": 8,
+                    "num_cache_instance": 8
+                },
+                {
+                    "cache": 4,
+                    "cache_properties": [
+                        "DATA_CACHE",
+                        "SIMD_CACHE"
+                    ],
+                    "cache_size": {
+                        "value": 8192,
+                        "unit": "KB"
+                    },
+                    "cache_level": 2,
+                    "max_num_cu_shared": 64,
+                    "num_cache_instance": 1
+                },
+                {
+                    "cache": 5,
+                    "cache_properties": [
+                        "DATA_CACHE",
+                        "SIMD_CACHE"
+                    ],
+                    "cache_size": {
+                        "value": 65536,
+                        "unit": "KB"
+                    },
+                    "cache_level": 3,
+                    "max_num_cu_shared": 64,
+                    "num_cache_instance": 1
+                }
+            ],
+            "clock": {
+                "sys": {
+                    "current_level": 1,
+                    "current_frequency": "3418MHz",
+                    "frequency_levels": {
+                        "Level 0": "500 MHz",
+                        "Level 1": "3418 MHz",
+                        "Level 2": "2350 MHz"
+                    }
+                },
+                "mem": {
+                    "current_level": 0,
+                    "current_frequency": "96MHz",
+                    "frequency_levels": {
+                        "Level 0": "96 MHz",
+                        "Level 1": "456 MHz",
+                        "Level 2": "772 MHz",
+                        "Level 3": "875 MHz",
+                        "Level 4": "1124 MHz",
+                        "Level 5": "1258 MHz"
+                    }
+                },
+                "df": {
+                    "current_level": 1,
+                    "current_frequency": "1998MHz",
+                    "frequency_levels": {
+                        "Level 0": "313 MHz",
+                        "Level 1": "1998 MHz",
+                        "Level 2": "2400 MHz"
+                    }
+                },
+                "soc": {
+                    "current_level": 1,
+                    "current_frequency": "1280MHz",
+                    "frequency_levels": {
+                        "Level 0": "417 MHz",
+                        "Level 1": "1280 MHz",
+                        "Level 2": "1476 MHz"
+                    }
+                },
+                "dcef": {
+                    "current_level": 1,
+                    "current_frequency": "219MHz",
+                    "frequency_levels": {
+                        "Level 0": "147 MHz",
+                        "Level 1": "219 MHz",
+                        "Level 2": "1800 MHz"
+                    }
+                },
+                "vclk0": {
+                    "current_level": 0,
+                    "current_frequency": "25MHz",
+                    "frequency_levels": {
+                        "Level 0": "25 MHz"
+                    }
+                },
+                "vclk1": {
+                    "current_level": 0,
+                    "current_frequency": "25MHz",
+                    "frequency_levels": {
+                        "Level 0": "25 MHz"
+                    }
+                },
+                "dclk0": {
+                    "current_level": 0,
+                    "current_frequency": "25MHz",
+                    "frequency_levels": {
+                        "Level 0": "25 MHz"
+                    }
+                },
+                "dclk1": {
+                    "current_level": 0,
+                    "current_frequency": "25MHz",
+                    "frequency_levels": {
+                        "Level 0": "25 MHz"
+                    }
+                }
+            }
+        },
+        {
+            "gpu": 2,
+            "asic": {
+                "market_name": "AMD Radeon AI PRO R9700",
+                "vendor_id": "0x1002",
+                "vendor_name": "Advanced Micro Devices Inc. [AMD/ATI]",
+                "subvendor_id": "0x1849",
+                "device_id": "0x7551",
+                "subsystem_id": "0x5413",
+                "rev_id": "0xc0",
+                "asic_serial": "0xE9ED4857E8792AF2",
+                "oam_id": "N/A",
+                "num_compute_units": 64,
+                "target_graphics_version": "gfx1201"
+            },
+            "bus": {
+                "bdf": "0000:83:00.0",
+                "max_pcie_width": 16,
+                "max_pcie_speed": {
+                    "value": 32,
+                    "unit": "GT/s"
+                },
+                "pcie_levels": {
+                    "0": [
+                        "2.5 GT/s",
+                        "16"
+                    ],
+                    "1": [
+                        "16.0 GT/s",
+                        "16"
+                    ],
+                    "2": [
+                        "32.0 GT/s",
+                        "16"
+                    ]
+                },
+                "pcie_interface_version": "Gen 5",
+                "slot_type": "CEM"
+            },
+            "ifwi": {
+                "name": "ASRock Navi48 XTW 32GB 300W IFWI",
+                "build_date": "2025/07/25 01:42",
+                "part_number": "113-APM107573-101",
+                "version": "00158738"
+            },
+            "limit": {
+                "ppt0": {
+                    "max_power_limit": {
+                        "value": 300,
+                        "unit": "W"
+                    },
+                    "min_power_limit": {
+                        "value": 210,
+                        "unit": "W"
+                    },
+                    "socket_power_limit": {
+                        "value": 300,
+                        "unit": "W"
+                    }
+                },
+                "ppt1": {
+                    "max_power_limit": "N/A",
+                    "min_power_limit": "N/A",
+                    "socket_power_limit": "N/A"
+                },
+                "slowdown_edge_temperature": {
+                    "value": 110,
+                    "unit": "C"
+                },
+                "slowdown_hotspot_temperature": {
+                    "value": 110,
+                    "unit": "C"
+                },
+                "slowdown_vram_temperature": {
+                    "value": 108,
+                    "unit": "C"
+                },
+                "shutdown_edge_temperature": {
+                    "value": 115,
+                    "unit": "C"
+                },
+                "shutdown_hotspot_temperature": {
+                    "value": 115,
+                    "unit": "C"
+                },
+                "shutdown_vram_temperature": {
+                    "value": 113,
+                    "unit": "C"
+                },
+                "ptl_state": "N/A",
+                "ptl_format": "N/A"
+            },
+            "driver": {
+                "name": "amdgpu",
+                "version": "6.16.6"
+            },
+            "board": {
+                "model_number": "N/A",
+                "product_serial": "N/A",
+                "fru_id": "N/A",
+                "product_name": "N/A",
+                "manufacturer_name": "Advanced Micro Devices, Inc. [AMD/ATI]"
+            },
+            "ras": {
+                "eeprom_version": "0x10000",
+                "bad_page_threshold": "N/A",
+                "bad_page_threshold_exceeded": "N/A",
+                "parity_schema": "ENABLED",
+                "single_bit_schema": "ENABLED",
+                "double_bit_schema": "ENABLED",
+                "poison_schema": "DISABLED",
+                "ecc_block_state": {
+                    "UMC": "ENABLED",
+                    "SDMA": "DISABLED",
+                    "GFX": "DISABLED",
+                    "MMHUB": "DISABLED",
+                    "ATHUB": "DISABLED",
+                    "PCIE_BIF": "DISABLED",
+                    "HDP": "DISABLED",
+                    "XGMI_WAFL": "DISABLED",
+                    "DF": "ENABLED",
+                    "SMN": "DISABLED",
+                    "SEM": "DISABLED",
+                    "MP0": "DISABLED",
+                    "MP1": "DISABLED",
+                    "FUSE": "DISABLED",
+                    "MCA": "DISABLED",
+                    "VCN": "DISABLED",
+                    "JPEG": "DISABLED",
+                    "IH": "DISABLED",
+                    "MPIO": "DISABLED"
+                }
+            },
+            "soc_pstate": "N/A",
+            "xgmi_plpd": "N/A",
+            "process_isolation": "Disabled",
+            "numa": {
+                "node": 0,
+                "affinity": -1,
+                "cpu_affinity": "N/A",
+                "socket_affinity": "N/A"
+            },
+            "vram": {
+                "type": "GDDR6",
+                "vendor": "SAMSUNG",
+                "size": {
+                    "value": 32624,
+                    "unit": "MB"
+                },
+                "bit_width": 256,
+                "max_bandwidth": {
+                    "value": "N/A",
+                    "unit": "GB/s"
+                }
+            },
+            "cache_info": [
+                {
+                    "cache": 0,
+                    "cache_properties": [
+                        "DATA_CACHE",
+                        "SIMD_CACHE"
+                    ],
+                    "cache_size": {
+                        "value": 32,
+                        "unit": "KB"
+                    },
+                    "cache_level": 1,
+                    "max_num_cu_shared": 1,
+                    "num_cache_instance": 64
+                },
+                {
+                    "cache": 1,
+                    "cache_properties": [
+                        "INST_CACHE",
+                        "SIMD_CACHE"
+                    ],
+                    "cache_size": {
+                        "value": 32,
+                        "unit": "KB"
+                    },
+                    "cache_level": 1,
+                    "max_num_cu_shared": 2,
+                    "num_cache_instance": 32
+                },
+                {
+                    "cache": 2,
+                    "cache_properties": [
+                        "DATA_CACHE",
+                        "SIMD_CACHE"
+                    ],
+                    "cache_size": {
+                        "value": 16,
+                        "unit": "KB"
+                    },
+                    "cache_level": 1,
+                    "max_num_cu_shared": 2,
+                    "num_cache_instance": 32
+                },
+                {
+                    "cache": 3,
+                    "cache_properties": [
+                        "DATA_CACHE",
+                        "SIMD_CACHE"
+                    ],
+                    "cache_size": {
+                        "value": 256,
+                        "unit": "KB"
+                    },
+                    "cache_level": 1,
+                    "max_num_cu_shared": 8,
+                    "num_cache_instance": 8
+                },
+                {
+                    "cache": 4,
+                    "cache_properties": [
+                        "DATA_CACHE",
+                        "SIMD_CACHE"
+                    ],
+                    "cache_size": {
+                        "value": 8192,
+                        "unit": "KB"
+                    },
+                    "cache_level": 2,
+                    "max_num_cu_shared": 64,
+                    "num_cache_instance": 1
+                },
+                {
+                    "cache": 5,
+                    "cache_properties": [
+                        "DATA_CACHE",
+                        "SIMD_CACHE"
+                    ],
+                    "cache_size": {
+                        "value": 65536,
+                        "unit": "KB"
+                    },
+                    "cache_level": 3,
+                    "max_num_cu_shared": 64,
+                    "num_cache_instance": 1
+                }
+            ],
+            "clock": {
+                "sys": {
+                    "current_level": 1,
+                    "current_frequency": "3411MHz",
+                    "frequency_levels": {
+                        "Level 0": "500 MHz",
+                        "Level 1": "3411 MHz",
+                        "Level 2": "2350 MHz"
+                    }
+                },
+                "mem": {
+                    "current_level": 0,
+                    "current_frequency": "96MHz",
+                    "frequency_levels": {
+                        "Level 0": "96 MHz",
+                        "Level 1": "456 MHz",
+                        "Level 2": "772 MHz",
+                        "Level 3": "875 MHz",
+                        "Level 4": "1124 MHz",
+                        "Level 5": "1258 MHz"
+                    }
+                },
+                "df": {
+                    "current_level": 1,
+                    "current_frequency": "1998MHz",
+                    "frequency_levels": {
+                        "Level 0": "313 MHz",
+                        "Level 1": "1998 MHz",
+                        "Level 2": "2400 MHz"
+                    }
+                },
+                "soc": {
+                    "current_level": 1,
+                    "current_frequency": "1280MHz",
+                    "frequency_levels": {
+                        "Level 0": "417 MHz",
+                        "Level 1": "1280 MHz",
+                        "Level 2": "1476 MHz"
+                    }
+                },
+                "dcef": {
+                    "current_level": 1,
+                    "current_frequency": "219MHz",
+                    "frequency_levels": {
+                        "Level 0": "147 MHz",
+                        "Level 1": "219 MHz",
+                        "Level 2": "1800 MHz"
+                    }
+                },
+                "vclk0": {
+                    "current_level": 0,
+                    "current_frequency": "25MHz",
+                    "frequency_levels": {
+                        "Level 0": "25 MHz"
+                    }
+                },
+                "vclk1": {
+                    "current_level": 0,
+                    "current_frequency": "25MHz",
+                    "frequency_levels": {
+                        "Level 0": "25 MHz"
+                    }
+                },
+                "dclk0": {
+                    "current_level": 0,
+                    "current_frequency": "25MHz",
+                    "frequency_levels": {
+                        "Level 0": "25 MHz"
+                    }
+                },
+                "dclk1": {
+                    "current_level": 0,
+                    "current_frequency": "25MHz",
+                    "frequency_levels": {
+                        "Level 0": "25 MHz"
+                    }
+                }
+            }
+        },
+        {
+            "gpu": 3,
+            "asic": {
+                "market_name": "AMD Radeon AI PRO R9700",
+                "vendor_id": "0x1002",
+                "vendor_name": "Advanced Micro Devices Inc. [AMD/ATI]",
+                "subvendor_id": "0x1849",
+                "device_id": "0x7551",
+                "subsystem_id": "0x5413",
+                "rev_id": "0xc0",
+                "asic_serial": "0x10C90CDC05825AAE",
+                "oam_id": "N/A",
+                "num_compute_units": 64,
+                "target_graphics_version": "gfx1201"
+            },
+            "bus": {
+                "bdf": "0000:c3:00.0",
+                "max_pcie_width": 16,
+                "max_pcie_speed": {
+                    "value": 32,
+                    "unit": "GT/s"
+                },
+                "pcie_levels": {
+                    "0": [
+                        "2.5 GT/s",
+                        "16"
+                    ],
+                    "1": [
+                        "16.0 GT/s",
+                        "16"
+                    ],
+                    "2": [
+                        "32.0 GT/s",
+                        "16"
+                    ]
+                },
+                "pcie_interface_version": "Gen 5",
+                "slot_type": "CEM"
+            },
+            "ifwi": {
+                "name": "ASRock Navi48 XTW 32GB 300W IFWI",
+                "build_date": "2025/06/02 00:27",
+                "part_number": "113-APM107573-100",
+                "version": "00153000"
+            },
+            "limit": {
+                "ppt0": {
+                    "max_power_limit": {
+                        "value": 300,
+                        "unit": "W"
+                    },
+                    "min_power_limit": {
+                        "value": 210,
+                        "unit": "W"
+                    },
+                    "socket_power_limit": {
+                        "value": 300,
+                        "unit": "W"
+                    }
+                },
+                "ppt1": {
+                    "max_power_limit": "N/A",
+                    "min_power_limit": "N/A",
+                    "socket_power_limit": "N/A"
+                },
+                "slowdown_edge_temperature": {
+                    "value": 110,
+                    "unit": "C"
+                },
+                "slowdown_hotspot_temperature": {
+                    "value": 110,
+                    "unit": "C"
+                },
+                "slowdown_vram_temperature": {
+                    "value": 108,
+                    "unit": "C"
+                },
+                "shutdown_edge_temperature": {
+                    "value": 115,
+                    "unit": "C"
+                },
+                "shutdown_hotspot_temperature": {
+                    "value": 115,
+                    "unit": "C"
+                },
+                "shutdown_vram_temperature": {
+                    "value": 113,
+                    "unit": "C"
+                },
+                "ptl_state": "N/A",
+                "ptl_format": "N/A"
+            },
+            "driver": {
+                "name": "amdgpu",
+                "version": "6.16.6"
+            },
+            "board": {
+                "model_number": "N/A",
+                "product_serial": "N/A",
+                "fru_id": "N/A",
+                "product_name": "N/A",
+                "manufacturer_name": "Advanced Micro Devices, Inc. [AMD/ATI]"
+            },
+            "ras": {
+                "eeprom_version": "0x10000",
+                "bad_page_threshold": "N/A",
+                "bad_page_threshold_exceeded": "N/A",
+                "parity_schema": "ENABLED",
+                "single_bit_schema": "ENABLED",
+                "double_bit_schema": "ENABLED",
+                "poison_schema": "DISABLED",
+                "ecc_block_state": {
+                    "UMC": "ENABLED",
+                    "SDMA": "DISABLED",
+                    "GFX": "DISABLED",
+                    "MMHUB": "DISABLED",
+                    "ATHUB": "DISABLED",
+                    "PCIE_BIF": "DISABLED",
+                    "HDP": "DISABLED",
+                    "XGMI_WAFL": "DISABLED",
+                    "DF": "ENABLED",
+                    "SMN": "DISABLED",
+                    "SEM": "DISABLED",
+                    "MP0": "DISABLED",
+                    "MP1": "DISABLED",
+                    "FUSE": "DISABLED",
+                    "MCA": "DISABLED",
+                    "VCN": "DISABLED",
+                    "JPEG": "DISABLED",
+                    "IH": "DISABLED",
+                    "MPIO": "DISABLED"
+                }
+            },
+            "soc_pstate": "N/A",
+            "xgmi_plpd": "N/A",
+            "process_isolation": "Disabled",
+            "numa": {
+                "node": 0,
+                "affinity": -1,
+                "cpu_affinity": "N/A",
+                "socket_affinity": "N/A"
+            },
+            "vram": {
+                "type": "GDDR6",
+                "vendor": "SAMSUNG",
+                "size": {
+                    "value": 32624,
+                    "unit": "MB"
+                },
+                "bit_width": 256,
+                "max_bandwidth": {
+                    "value": "N/A",
+                    "unit": "GB/s"
+                }
+            },
+            "cache_info": [
+                {
+                    "cache": 0,
+                    "cache_properties": [
+                        "DATA_CACHE",
+                        "SIMD_CACHE"
+                    ],
+                    "cache_size": {
+                        "value": 32,
+                        "unit": "KB"
+                    },
+                    "cache_level": 1,
+                    "max_num_cu_shared": 1,
+                    "num_cache_instance": 64
+                },
+                {
+                    "cache": 1,
+                    "cache_properties": [
+                        "INST_CACHE",
+                        "SIMD_CACHE"
+                    ],
+                    "cache_size": {
+                        "value": 32,
+                        "unit": "KB"
+                    },
+                    "cache_level": 1,
+                    "max_num_cu_shared": 2,
+                    "num_cache_instance": 32
+                },
+                {
+                    "cache": 2,
+                    "cache_properties": [
+                        "DATA_CACHE",
+                        "SIMD_CACHE"
+                    ],
+                    "cache_size": {
+                        "value": 16,
+                        "unit": "KB"
+                    },
+                    "cache_level": 1,
+                    "max_num_cu_shared": 2,
+                    "num_cache_instance": 32
+                },
+                {
+                    "cache": 3,
+                    "cache_properties": [
+                        "DATA_CACHE",
+                        "SIMD_CACHE"
+                    ],
+                    "cache_size": {
+                        "value": 256,
+                        "unit": "KB"
+                    },
+                    "cache_level": 1,
+                    "max_num_cu_shared": 8,
+                    "num_cache_instance": 8
+                },
+                {
+                    "cache": 4,
+                    "cache_properties": [
+                        "DATA_CACHE",
+                        "SIMD_CACHE"
+                    ],
+                    "cache_size": {
+                        "value": 8192,
+                        "unit": "KB"
+                    },
+                    "cache_level": 2,
+                    "max_num_cu_shared": 64,
+                    "num_cache_instance": 1
+                },
+                {
+                    "cache": 5,
+                    "cache_properties": [
+                        "DATA_CACHE",
+                        "SIMD_CACHE"
+                    ],
+                    "cache_size": {
+                        "value": 65536,
+                        "unit": "KB"
+                    },
+                    "cache_level": 3,
+                    "max_num_cu_shared": 64,
+                    "num_cache_instance": 1
+                }
+            ],
+            "clock": {
+                "sys": {
+                    "current_level": 1,
+                    "current_frequency": "3418MHz",
+                    "frequency_levels": {
+                        "Level 0": "500 MHz",
+                        "Level 1": "3418 MHz",
+                        "Level 2": "2350 MHz"
+                    }
+                },
+                "mem": {
+                    "current_level": 0,
+                    "current_frequency": "96MHz",
+                    "frequency_levels": {
+                        "Level 0": "96 MHz",
+                        "Level 1": "456 MHz",
+                        "Level 2": "772 MHz",
+                        "Level 3": "875 MHz",
+                        "Level 4": "1124 MHz",
+                        "Level 5": "1258 MHz"
+                    }
+                },
+                "df": {
+                    "current_level": 1,
+                    "current_frequency": "2017MHz",
+                    "frequency_levels": {
+                        "Level 0": "313 MHz",
+                        "Level 1": "2017 MHz",
+                        "Level 2": "2400 MHz"
+                    }
+                },
+                "soc": {
+                    "current_level": 1,
+                    "current_frequency": "1280MHz",
+                    "frequency_levels": {
+                        "Level 0": "417 MHz",
+                        "Level 1": "1280 MHz",
+                        "Level 2": "1476 MHz"
+                    }
+                },
+                "dcef": {
+                    "current_level": 1,
+                    "current_frequency": "219MHz",
+                    "frequency_levels": {
+                        "Level 0": "147 MHz",
+                        "Level 1": "219 MHz",
+                        "Level 2": "1800 MHz"
+                    }
+                },
+                "vclk0": {
+                    "current_level": 0,
+                    "current_frequency": "25MHz",
+                    "frequency_levels": {
+                        "Level 0": "25 MHz"
+                    }
+                },
+                "vclk1": {
+                    "current_level": 0,
+                    "current_frequency": "25MHz",
+                    "frequency_levels": {
+                        "Level 0": "25 MHz"
+                    }
+                },
+                "dclk0": {
+                    "current_level": 0,
+                    "current_frequency": "25MHz",
+                    "frequency_levels": {
+                        "Level 0": "25 MHz"
+                    }
+                },
+                "dclk1": {
+                    "current_level": 0,
+                    "current_frequency": "25MHz",
+                    "frequency_levels": {
+                        "Level 0": "25 MHz"
+                    }
+                }
+            }
+        }
+    ]
+}

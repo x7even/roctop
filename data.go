@@ -26,15 +26,63 @@ type GpuBackend interface {
 	Name() string
 }
 
+// ── AMD CLI tool abstraction ────────────────────────────────────────
+
+// amdTool bundles the CLI-tool roles the rocm backend still needs an
+// external binary for: (1) discovery/identity, (2) per-tick process listing
+// with PID→GPU attribution, (3) one-time static info, and (4) the whole-tick
+// fallback used when GPUs cannot be mapped to sysfs card directories.
+// rocm-smi is deprecated in ROCm 6.x+; selectAmdTool picks rocm-smi when
+// present (unchanged behavior) and falls back to amd-smi otherwise.
+type amdTool struct {
+	name        string
+	discover    func() []GpuData
+	processes   func() []ProcessData
+	staticInfo  func(gpus []GpuData)
+	collectFull func() ([]GpuData, []ProcessData)
+}
+
+// selectAmdTool returns the CLI tool backing the rocm backend, or nil when
+// neither rocm-smi nor amd-smi is installed.
+func selectAmdTool() *amdTool {
+	if _, err := exec.LookPath(rocmSMI); err == nil {
+		t := newRocmSMITool()
+		return &t
+	}
+	if _, err := exec.LookPath(amdSMI); err == nil {
+		t := newAmdSMITool()
+		return &t
+	}
+	return nil
+}
+
+func newRocmSMITool() amdTool {
+	return amdTool{
+		name: rocmSMI,
+		discover: func() []GpuData {
+			data := runJSON(rocmSMIFlags...)
+			if data == nil {
+				return nil
+			}
+			gpus, _ := parseRocmAll(data)
+			return gpus
+		},
+		processes:   collectRocmProcesses,
+		staticInfo:  rocmSMIStaticInfo,
+		collectFull: collectViaRocmSMI,
+	}
+}
+
 // ── ROCm backend ────────────────────────────────────────────────────
 
-// rocmBackend discovers GPUs via rocm-smi once at construction, then reads
-// all per-tick metrics straight from sysfs (microseconds instead of four
-// rocm-smi execs). rocm-smi remains in use for process listing per tick,
+// rocmBackend discovers GPUs via the AMD CLI tool once at construction, then
+// reads all per-tick metrics straight from sysfs (microseconds instead of
+// four tool execs). The tool remains in use for process listing per tick,
 // the one-time static info pass, and as a whole-tick fallback when a GPU
 // cannot be mapped to a sysfs card directory.
 type rocmBackend struct {
 	mu        sync.Mutex // guards cards and sysfsMode; bubbletea can run overlapping collection goroutines
+	tool      amdTool
 	cards     []rocmCard
 	sysfsMode bool // true when every discovered GPU is mapped to sysfs
 }
@@ -46,20 +94,16 @@ type rocmCard struct {
 	dev      amdSysfsDev
 }
 
-func newRocmBackend() *rocmBackend {
-	b := &rocmBackend{}
+func newRocmBackend(tool amdTool) *rocmBackend {
+	b := &rocmBackend{tool: tool}
 	b.discover()
 	return b
 }
 
-// discover runs one full rocm-smi pass to enumerate GPUs and maps each to
+// discover runs one full CLI-tool pass to enumerate GPUs and maps each to
 // its /sys/class/drm/cardN/device directory via the PCI bus address.
 func (r *rocmBackend) discover() {
-	data := runJSON(rocmSMIFlags...)
-	if data == nil {
-		return
-	}
-	gpus, _ := parseRocmAll(data)
+	gpus := r.tool.discover()
 	cards := make([]rocmCard, 0, len(gpus))
 	mapped := true
 	for _, g := range gpus {
@@ -819,7 +863,36 @@ func collectRASInfo(gpus []GpuData) {
 	parseRASInfo(string(out), gpus)
 }
 
-func collectStaticInfo(gpus []GpuData) {
+// staticInfoCollector is implemented by backends that can fill one-time
+// static fields (VBIOS, memory vendor, unique ID, driver version, RAS).
+type staticInfoCollector interface {
+	CollectStaticInfo(gpus []GpuData)
+}
+
+// collectStaticInfo runs the one-time static info pass: backend-specific
+// collectors first, then the backend-independent PCIe root port lookup.
+func collectStaticInfo(backends []GpuBackend, gpus []GpuData) {
+	for _, b := range backends {
+		if s, ok := b.(staticInfoCollector); ok {
+			s.CollectStaticInfo(gpus)
+		}
+	}
+
+	// PCIe root port (any backend with a PCI bus address)
+	for i := range gpus {
+		if gpus[i].PcieBus != "" && gpus[i].PcieRootPort == "" {
+			gpus[i].PcieRootPort = pcieRootPort(gpus[i].PcieBus)
+		}
+	}
+}
+
+func (r *rocmBackend) CollectStaticInfo(gpus []GpuData) {
+	r.tool.staticInfo(gpus)
+}
+
+// rocmSMIStaticInfo is the rocm-smi implementation of the one-time static
+// info pass (VBIOS, memory vendor, unique ID, driver version, RAS).
+func rocmSMIStaticInfo(gpus []GpuData) {
 	// Key only ROCm GPUs by CardID: the rocm-smi calls below return keys
 	// like "card0"/"card3" which are CardID-only.
 	byID := rocmCardIndexByID(gpus)
@@ -838,13 +911,6 @@ func collectStaticInfo(gpus []GpuData) {
 	forEachCard(runJSON("--showuniqueid"), byID, func(idx int, d map[string]interface{}) {
 		gpus[idx].UniqueID = strings.TrimSpace(getString(d, "Unique ID"))
 	})
-
-	// PCIe root port
-	for i := range gpus {
-		if gpus[i].PcieBus != "" && gpus[i].PcieRootPort == "" {
-			gpus[i].PcieRootPort = pcieRootPort(gpus[i].PcieBus)
-		}
-	}
 
 	// Driver version
 	drvData := runJSON("--showdriverversion")
@@ -920,14 +986,14 @@ func (r *rocmBackend) CollectData() ([]GpuData, []ProcessData) {
 	defer r.mu.Unlock()
 
 	// Sysfs fast path: refresh the cached mapping only when a read fails,
-	// then fall back to the full rocm-smi pass for this tick if the mapping
+	// then fall back to the full CLI-tool pass for this tick if the mapping
 	// still cannot be established.
 	if r.sysfsMode && !r.sysfsOK() {
 		logf("rocm: sysfs mapping stale, rediscovering")
 		r.discover()
 	}
 	if !r.sysfsMode || !r.sysfsOK() {
-		return r.collectViaRocmSMI()
+		return r.tool.collectFull()
 	}
 
 	gpus := make([]GpuData, 0, len(r.cards))
@@ -941,7 +1007,7 @@ func (r *rocmBackend) CollectData() ([]GpuData, []ProcessData) {
 		collectAmdSysfsMetrics(&g, c.dev)
 		gpus = append(gpus, g)
 	}
-	return gpus, collectRocmProcesses()
+	return gpus, r.tool.processes()
 }
 
 // parseRocmAll parses the main rocm-smi JSON payload ("cardN" + "system"
@@ -1000,7 +1066,7 @@ func collectRocmProcesses() []ProcessData {
 
 // collectViaRocmSMI is the legacy full-exec collection path (four rocm-smi
 // invocations), used when GPUs cannot be mapped to sysfs card directories.
-func (r *rocmBackend) collectViaRocmSMI() ([]GpuData, []ProcessData) {
+func collectViaRocmSMI() ([]GpuData, []ProcessData) {
 	data := runJSON(rocmSMIFlags...)
 	if data == nil {
 		return nil, nil
