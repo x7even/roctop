@@ -174,6 +174,136 @@ func TestMergeProcessesEmpty(t *testing.T) {
 	}
 }
 
+// ── ROCm process parsing ────────────────────────────────────────────
+
+// Raw "system" map as decoded from "rocm-smi --showpids --json". The value
+// fields are (name, number of GPUs used, vram bytes, sdma usage, cu
+// occupancy); rocm-smi lowercases the whole value string in JSON mode.
+func rocmShowPidsSystemFixture() map[string]interface{} {
+	return map[string]interface{}{
+		"PID52243": "python3, 2, 4096000, 0, 0",
+		"PID60001": "ollama, 6, 1048576, 0, 0",
+		"PID61234": "idlehold, 0, 0, 0, 0",
+	}
+}
+
+func TestParseProcessesDoesNotFabricateGpuIDsFromCount(t *testing.T) {
+	result := parseProcesses(rocmShowPidsSystemFixture())
+	if len(result) != 3 {
+		t.Fatalf("parseProcesses returned %d procs, want 3", len(result))
+	}
+	byPID := make(map[int]ProcessData)
+	for _, p := range result {
+		byPID[p.PID] = p
+	}
+	multi, ok := byPID[52243]
+	if !ok {
+		t.Fatal("PID 52243 missing from result")
+	}
+	if multi.Name != "python3" || multi.VramUsed != 4096000 {
+		t.Errorf("PID 52243: Name=%q VramUsed=%d, want python3/4096000", multi.Name, multi.VramUsed)
+	}
+	// The second field (2) is a GPU COUNT, not an index — it must not
+	// become a GPU ID. Attribution comes only from --showpidgpus.
+	for pid, p := range byPID {
+		if len(p.GpuIDs) != 0 {
+			t.Errorf("PID %d: GpuIDs=%v, want empty (must not be fabricated from GPU count)", pid, p.GpuIDs)
+		}
+	}
+	// Sorted by VRAM descending.
+	if result[0].PID != 52243 || result[2].PID != 61234 {
+		t.Errorf("sort order: got PIDs %d,%d,%d, want 52243 first and 61234 last",
+			result[0].PID, result[1].PID, result[2].PID)
+	}
+}
+
+// Text output of "rocm-smi --showpidgpus" per showGpusByPid/printListLog:
+// index lists may wrap across lines, and a 0-device PID prints only the
+// metric-name line without a trailing colon or list.
+const pidGpusSample = `============================ GPUs Indexed by PID ============================
+PID 52243 is using 2 DRM device(s):
+0 1
+PID 60001 is using 6 DRM device(s):
+0 1 2
+3 4 5
+PID 61234 is using 0 DRM device(s)
+PID 61300 is using 1 DRM device(s):
+3
+=============================================================================
+`
+
+func TestParsePidGpus(t *testing.T) {
+	m := parsePidGpus(pidGpusSample)
+	if len(m) != 4 {
+		t.Fatalf("parsePidGpus returned %d PIDs, want 4: %v", len(m), m)
+	}
+	cases := []struct {
+		pid  int
+		want []int
+	}{
+		{52243, []int{0, 1}},
+		{60001, []int{0, 1, 2, 3, 4, 5}}, // wrapped across two lines
+		{61234, []int{}},                 // zero devices: metric line only
+		{61300, []int{3}},
+	}
+	for _, c := range cases {
+		got, ok := m[c.pid]
+		if !ok {
+			t.Errorf("PID %d missing from map", c.pid)
+			continue
+		}
+		if len(got) != len(c.want) {
+			t.Errorf("PID %d: GpuIDs=%v, want %v", c.pid, got, c.want)
+			continue
+		}
+		for i := range got {
+			if got[i] != c.want[i] {
+				t.Errorf("PID %d: GpuIDs=%v, want %v", c.pid, got, c.want)
+				break
+			}
+		}
+	}
+}
+
+func TestParsePidGpusNoKFDPids(t *testing.T) {
+	out := `============================ GPUs Indexed by PID ============================
+No KFD PIDs currently running
+=============================================================================
+`
+	m := parsePidGpus(out)
+	if len(m) != 0 {
+		t.Errorf("parsePidGpus returned %d PIDs, want 0: %v", len(m), m)
+	}
+}
+
+func TestParsePidGpusEmpty(t *testing.T) {
+	if m := parsePidGpus(""); len(m) != 0 {
+		t.Errorf("parsePidGpus(\"\") returned %d PIDs, want 0", len(m))
+	}
+}
+
+// Integration-shaped: --showpids parsing plus --showpidgpus attribution,
+// combined the same way rocmBackend.CollectData does.
+func TestParseProcessesWithPidGpusAttribution(t *testing.T) {
+	procs := parseProcesses(rocmShowPidsSystemFixture())
+	applyPidGpuMap(procs, parsePidGpus(pidGpusSample))
+
+	byPID := make(map[int]ProcessData)
+	for _, p := range procs {
+		byPID[p.PID] = p
+	}
+	if got := byPID[52243].GpuIDs; len(got) != 2 || got[0] != 0 || got[1] != 1 {
+		t.Errorf("PID 52243: GpuIDs=%v, want [0 1]", got)
+	}
+	if got := byPID[60001].GpuIDs; len(got) != 6 || got[0] != 0 || got[5] != 5 {
+		t.Errorf("PID 60001: GpuIDs=%v, want [0 1 2 3 4 5]", got)
+	}
+	// PID with zero devices keeps empty GpuIDs (rendered as "?").
+	if got := byPID[61234].GpuIDs; len(got) != 0 {
+		t.Errorf("PID 61234: GpuIDs=%v, want empty", got)
+	}
+}
+
 // ── NVIDIA parsing ──────────────────────────────────────────────────
 
 func TestParseNvidiaGPULine(t *testing.T) {

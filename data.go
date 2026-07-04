@@ -423,30 +423,17 @@ func parseProcesses(system map[string]interface{}) []ProcessData {
 			continue
 		}
 		name := parts[0]
-		gpuID, _ := strconv.Atoi(parts[1])
+		// parts[1] is the NUMBER of GPUs the process uses (a count, not a
+		// GPU index), so it must not populate GpuIDs. Real attribution comes
+		// from "rocm-smi --showpidgpus" (see parsePidGpus/applyPidGpus).
 		vram, _ := strconv.ParseInt(parts[2], 10, 64)
 
 		if p, ok := procs[pid]; ok {
-			found := false
-			for _, g := range p.GpuIDs {
-				if g == gpuID {
-					found = true
-					break
-				}
-			}
-			if !found && gpuID >= 0 {
-				p.GpuIDs = append(p.GpuIDs, gpuID)
-			}
 			p.VramUsed += vram
 		} else {
-			gpuIDs := []int{}
-			if gpuID >= 0 {
-				gpuIDs = []int{gpuID}
-			}
 			procs[pid] = &ProcessData{
 				PID:      pid,
 				Name:     name,
-				GpuIDs:   gpuIDs,
 				VramUsed: vram,
 			}
 		}
@@ -460,6 +447,86 @@ func parseProcesses(system map[string]interface{}) []ProcessData {
 		return result[i].VramUsed > result[j].VramUsed
 	})
 	return result
+}
+
+var rePidGpus = regexp.MustCompile(`^PID\s+(\d+)\s+is using\s+(\d+)\s+DRM device\(s\)`)
+
+// parsePidGpus parses the text output of "rocm-smi --showpidgpus" into a
+// map of PID -> DRM device (GPU) indices. The JSON mode emits nothing for
+// the GPU list, so the plain-text output must be parsed. It looks like:
+//
+//	====== GPUs Indexed by PID ======
+//	PID 52243 is using 2 DRM device(s):
+//	0 1
+//	================================
+//
+// The index list is space-separated and may wrap across multiple lines.
+// A PID using 0 devices prints only the "PID ... is using 0 DRM device(s)"
+// line with no list.
+func parsePidGpus(output string) map[int][]int {
+	result := make(map[int][]int)
+	currentPID := -1
+	for _, line := range strings.Split(output, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if m := rePidGpus.FindStringSubmatch(trimmed); m != nil {
+			pid, err := strconv.Atoi(m[1])
+			if err != nil {
+				currentPID = -1
+				continue
+			}
+			currentPID = pid
+			result[pid] = []int{}
+			continue
+		}
+		if currentPID < 0 || trimmed == "" {
+			continue
+		}
+		// Device index lines: space-separated integers, possibly wrapped
+		// across several lines. Any non-numeric line (e.g. the closing
+		// "====" spacer) terminates the current PID's list.
+		fields := strings.Fields(trimmed)
+		ids := make([]int, 0, len(fields))
+		valid := true
+		for _, f := range fields {
+			id, err := strconv.Atoi(f)
+			if err != nil {
+				valid = false
+				break
+			}
+			ids = append(ids, id)
+		}
+		if valid {
+			result[currentPID] = append(result[currentPID], ids...)
+		} else {
+			currentPID = -1
+		}
+	}
+	return result
+}
+
+// applyPidGpuMap fills each process's GpuIDs from the PID -> GPU indices
+// map produced by parsePidGpus. PIDs absent from the map keep empty GpuIDs
+// (renderProcessTable shows "?" for those).
+func applyPidGpuMap(procs []ProcessData, pidGpus map[int][]int) {
+	for i := range procs {
+		if ids, ok := pidGpus[procs[i].PID]; ok && len(ids) > 0 {
+			procs[i].GpuIDs = ids
+		}
+	}
+}
+
+// applyPidGpus runs "rocm-smi --showpidgpus" (plain text — JSON mode emits
+// no GPU list) and fills each process's GpuIDs with its DRM device indices.
+func applyPidGpus(procs []ProcessData) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, rocmSMI, "--showpidgpus")
+	out, err := cmd.Output()
+	if err != nil {
+		logf("rocm-smi --showpidgpus: %v", err)
+		return
+	}
+	applyPidGpuMap(procs, parsePidGpus(string(out)))
 }
 
 // ── Supplemental data collectors ─────────────────────────────────────
@@ -798,6 +865,10 @@ func (r *rocmBackend) CollectData() ([]GpuData, []ProcessData) {
 		applyMetrics(gpus)
 		applyGTT(gpus)
 		applyBandwidth(gpus)
+	}
+
+	if len(procs) > 0 {
+		applyPidGpus(procs)
 	}
 
 	return gpus, procs
