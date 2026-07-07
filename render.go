@@ -9,75 +9,56 @@ import (
 
 // ── Unicode character sets ────────────────────────────────────────────
 
-const barChars = " ▏▎▍▌▋▊▉█"
-
 // braille encodes two vertical bar levels (0-4) per cell: braille[left*5+right]
 const braille = " ⢀⢠⢰⢸⡀⣀⣠⣰⣸⡄⣄⣤⣴⣼⡆⣆⣦⣶⣾⡇⣇⣧⣷⣿"
 
-// ── Color gradients ───────────────────────────────────────────────────
+// barFill is a full braille cell: it gives the bar fill a woven texture
+// that matches the braille sparklines.
+const barFill = "⣿"
 
-type colorStop struct {
-	pos     float64
-	r, g, b uint8
-}
+// barTipChars maps the fractional tail of a bar to a rising left-column
+// braille glyph. Index 0 is intentionally blank: a fraction too small to
+// earn the first partial glyph falls through to the dotted track, matching
+// the previous partial-cell behavior.
+const barTipChars = " ⡀⡄⡆⡇"
 
-type gradient [101][3]uint8
+// trackRune is the empty portion of a bar: a quiet dotted track.
+const trackRune = "·"
 
-func buildGradient(stops []colorStop) gradient {
-	var g gradient
-	for i := 0; i <= 100; i++ {
-		v := float64(i)
-		for j := 0; j < len(stops)-1; j++ {
-			s0, s1 := stops[j], stops[j+1]
-			if v <= s1.pos {
-				t := (v - s0.pos) / (s1.pos - s0.pos)
-				g[i][0] = uint8(float64(s0.r) + float64(int(s1.r)-int(s0.r))*t)
-				g[i][1] = uint8(float64(s0.g) + float64(int(s1.g)-int(s0.g))*t)
-				g[i][2] = uint8(float64(s0.b) + float64(int(s1.b)-int(s0.b))*t)
-				break
-			}
-		}
-	}
-	// ensure last stop is set
-	last := stops[len(stops)-1]
-	g[100] = [3]uint8{last.r, last.g, last.b}
-	return g
-}
+// ── Status palette ────────────────────────────────────────────────────
+//
+// Muted steel fill with htop-like positional status accents. A filled bar
+// cell is colored by its POSITION in the bar, not by the metric value: the
+// bar stays calm until the fill actually reaches the hot zone, and then
+// only the hot cells change color.
 
-var utilGradient = buildGradient([]colorStop{
-	{0, 30, 100, 200},
-	{30, 0, 175, 135},
-	{60, 95, 215, 0},
-	{75, 255, 175, 0},
-	{88, 255, 95, 0},
-	{100, 255, 0, 0},
-})
+var (
+	steelStyle = rgbStyle(95, 135, 175) // #5f87af base fill
+	amberStyle = rgbStyle(215, 166, 95) // #d7a65f warning accent
+	redStyle   = rgbStyle(215, 95, 95)  // #d75f5f critical accent
+	trackStyle = rgbStyle(50, 50, 60)   // dotted empty track
+)
 
-var powerGradient = buildGradient([]colorStop{
-	{0, 0, 135, 95},
-	{40, 0, 215, 0},
-	{65, 215, 215, 0},
-	{85, 255, 95, 0},
-	{100, 255, 0, 0},
-})
+// tierStyles is indexed by statusTier.
+var tierStyles = [3]lipgloss.Style{steelStyle, amberStyle, redStyle}
 
-var tempGradient = buildGradient([]colorStop{
-	{0, 0, 215, 255},
-	{40, 0, 215, 135},
-	{60, 95, 215, 0},
-	{75, 255, 175, 0},
-	{88, 255, 95, 0},
-	{100, 255, 0, 0},
-})
-
-func clampIdx(v float64) int {
-	if v < 0 {
+// statusTier maps a percentage to a color tier: 0 steel, 1 amber (>= 75),
+// 2 red (>= 90).
+func statusTier(pct float64) int {
+	switch {
+	case pct >= 90:
+		return 2
+	case pct >= 75:
+		return 1
+	default:
 		return 0
 	}
-	if v > 100 {
-		return 100
-	}
-	return int(v)
+}
+
+// barCellTier returns the color tier for the filled cell at position i of a
+// bar that is width cells wide.
+func barCellTier(i, width int) int {
+	return statusTier(float64(i) * 100 / float64(width))
 }
 
 func rgbStyle(r, g, b uint8) lipgloss.Style {
@@ -86,7 +67,7 @@ func rgbStyle(r, g, b uint8) lipgloss.Style {
 
 // ── Bar chart renderer ────────────────────────────────────────────────
 
-func renderBar(value, maximum float64, width int, grad gradient) string {
+func renderBar(value, maximum float64, width int) string {
 	if width <= 0 {
 		return ""
 	}
@@ -101,30 +82,30 @@ func renderBar(value, maximum float64, width int, grad gradient) string {
 		}
 	}
 
-	c := grad[clampIdx(pct)]
-	fillStyle := rgbStyle(c[0], c[1], c[2])
-	emptyStyle := rgbStyle(60, 60, 60)
-
-	barRunes := []rune(barChars)
-	filled := int(pct / 100 * float64(width))
-	remainder := (pct / 100 * float64(width)) - float64(filled)
-	fracIdx := int(remainder * float64(len(barRunes)-1))
+	tipRunes := []rune(barTipChars)
+	cells := pct / 100 * float64(width)
+	filled := int(cells)
+	remainder := cells - float64(filled)
+	fracIdx := int(remainder * float64(len(tipRunes)-1))
 
 	var sb strings.Builder
-	if filled > 0 {
-		sb.WriteString(fillStyle.Render(strings.Repeat("█", filled)))
+	// Paint filled cells in runs of a single tier to keep escape codes down.
+	for start := 0; start < filled; {
+		tier := barCellTier(start, width)
+		end := start + 1
+		for end < filled && barCellTier(end, width) == tier {
+			end++
+		}
+		sb.WriteString(tierStyles[tier].Render(strings.Repeat(barFill, end-start)))
+		start = end
 	}
 	if fracIdx > 0 && filled < width {
-		sb.WriteString(fillStyle.Render(string(barRunes[fracIdx])))
-		empty := width - filled - 1
-		if empty > 0 {
-			sb.WriteString(emptyStyle.Render(strings.Repeat("░", empty)))
+		sb.WriteString(tierStyles[barCellTier(filled, width)].Render(string(tipRunes[fracIdx])))
+		if empty := width - filled - 1; empty > 0 {
+			sb.WriteString(trackStyle.Render(strings.Repeat(trackRune, empty)))
 		}
-	} else {
-		empty := width - filled
-		if empty > 0 {
-			sb.WriteString(emptyStyle.Render(strings.Repeat("░", empty)))
-		}
+	} else if empty := width - filled; empty > 0 {
+		sb.WriteString(trackStyle.Render(strings.Repeat(trackRune, empty)))
 	}
 	return sb.String()
 }
@@ -149,7 +130,10 @@ func normalizeToLevels(value, vmin, vmax float64, total int) int {
 	return level
 }
 
-func renderMultilineSparkline(history []float64, width, rows int, vmin, vmax float64, grad gradient, gradScale float64) []string {
+// renderMultilineSparkline draws history as braille columns. Each column is
+// colored by its value relative to colorScale: >= 90% red, >= 75% amber,
+// otherwise the steel base — the same status thresholds as the bars.
+func renderMultilineSparkline(history []float64, width, rows int, vmin, vmax float64, colorScale float64) []string {
 	result := make([]string, rows)
 	if width <= 0 {
 		return result
@@ -179,11 +163,10 @@ func renderMultilineSparkline(history []float64, width, rows int, vmin, vmax flo
 
 		avg := (vl + vr) / 2
 		pct := 0.0
-		if gradScale > 0 {
-			pct = avg / gradScale * 100
+		if colorScale > 0 {
+			pct = avg / colorScale * 100
 		}
-		c := grad[clampIdx(pct)]
-		colStyle := rgbStyle(c[0], c[1], c[2])
+		colStyle := tierStyles[statusTier(pct)]
 
 		for r := 0; r < rows; r++ {
 			levelsBelow := (rows - 1 - r) * 4
