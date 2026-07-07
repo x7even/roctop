@@ -15,8 +15,8 @@ var (
 	headerPause = lipgloss.NewStyle().Background(lipgloss.Color("#0d1a2d")).Foreground(lipgloss.Color("#ffd700")).Bold(true)
 	headerInfo  = lipgloss.NewStyle().Background(lipgloss.Color("#0d1a2d")).Foreground(lipgloss.Color("#ff00ff")).Bold(true)
 	headerHelp  = lipgloss.NewStyle().Background(lipgloss.Color("#0d1a2d")).Foreground(lipgloss.Color("#00ff87")).Bold(true)
-	headerStale = lipgloss.NewStyle().Background(lipgloss.Color("#0d1a2d")).Foreground(lipgloss.Color("#ff8700")).Bold(true)
-	headerLog   = lipgloss.NewStyle().Background(lipgloss.Color("#0d1a2d")).Foreground(lipgloss.Color("#ff8700")).Bold(true)
+	headerStale = lipgloss.NewStyle().Background(lipgloss.Color("#0d1a2d")).Foreground(lipgloss.Color("#d7a65f")).Bold(true)
+	headerLog   = lipgloss.NewStyle().Background(lipgloss.Color("#0d1a2d")).Foreground(lipgloss.Color("#d7a65f")).Bold(true)
 )
 
 func renderHeader(gpuCount int, backendStr string, refreshSecs float64, paused, infoMode, helpMode, logMode, dataStale bool, focusIdx int, width int) string {

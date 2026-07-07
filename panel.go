@@ -13,7 +13,7 @@ const sparkIndent = 6
 const minBarW = 8
 
 var (
-	warnStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#ff5000")).Bold(true)
+	warnStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#d75f5f")).Bold(true)
 	labelStyle  = lipgloss.NewStyle().Faint(true)
 	boldStyle   = lipgloss.NewStyle().Bold(true)
 	dimStyle    = lipgloss.NewStyle().Faint(true)

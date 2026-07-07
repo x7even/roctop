@@ -9,7 +9,7 @@ import (
 
 var (
 	logTimestampStyle = lipgloss.NewStyle().Faint(true)
-	logMsgStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("#ff8700"))
+	logMsgStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("#d7a65f"))
 	logEmptyStyle     = lipgloss.NewStyle().Faint(true)
 	logTitleStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#00d7ff")).Bold(true)
 )
