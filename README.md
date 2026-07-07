@@ -13,7 +13,7 @@ roctop has two main views — the metrics view and the static info view (`i`):
 ## Features
 
 - Real-time 2-column GPU grid: utilisation, VRAM, GTT memory (APU/iGPU), power, temperature, clocks, fan
-- Multi-row braille sparklines with gradient colouring — variation within narrow ranges stays visible
+- Multi-row braille sparklines with status colouring (steel, amber past 75%, red past 90%) — variation within narrow ranges stays visible
 - PCIe bandwidth monitoring — TX/RX rates with all-time peak tracking (AMD and NVIDIA)
 - Throttle detection with reason decoding (THERMAL, POWER_LIMIT, etc.)
 - ECC/RAS error detection — warnings shown in info view with correctable/uncorrectable counts
