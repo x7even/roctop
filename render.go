@@ -12,15 +12,9 @@ import (
 // braille encodes two vertical bar levels (0-4) per cell: braille[left*5+right]
 const braille = " ⢀⢠⢰⢸⡀⣀⣠⣰⣸⡄⣄⣤⣴⣼⡆⣆⣦⣶⣾⡇⣇⣧⣷⣿"
 
-// barFill is a full braille cell: it gives the bar fill a woven texture
-// that matches the braille sparklines.
-const barFill = "⣿"
-
-// barTipChars maps the fractional tail of a bar to a rising left-column
-// braille glyph. Index 0 is intentionally blank: a fraction too small to
-// earn the first partial glyph falls through to the dotted track, matching
-// the previous partial-cell behavior.
-const barTipChars = " ⡀⡄⡆⡇"
+// barFill is a slim lower-height block: bars read as a distinct, lighter
+// element and cannot be confused with the braille sparklines below them.
+const barFill = "▆"
 
 // trackRune is the empty portion of a bar: a quiet dotted track.
 const trackRune = "·"
@@ -82,11 +76,12 @@ func renderBar(value, maximum float64, width int) string {
 		}
 	}
 
-	tipRunes := []rune(barTipChars)
-	cells := pct / 100 * float64(width)
-	filled := int(cells)
-	remainder := cells - float64(filled)
-	fracIdx := int(remainder * float64(len(tipRunes)-1))
+	// The slim fill has no fractional-width variants, so the fill is rounded
+	// to the nearest whole cell instead of drawing a sub-cell tip.
+	filled := int(pct/100*float64(width) + 0.5)
+	if filled > width {
+		filled = width
+	}
 
 	var sb strings.Builder
 	// Paint filled cells in runs of a single tier to keep escape codes down.
@@ -99,12 +94,7 @@ func renderBar(value, maximum float64, width int) string {
 		sb.WriteString(tierStyles[tier].Render(strings.Repeat(barFill, end-start)))
 		start = end
 	}
-	if fracIdx > 0 && filled < width {
-		sb.WriteString(tierStyles[barCellTier(filled, width)].Render(string(tipRunes[fracIdx])))
-		if empty := width - filled - 1; empty > 0 {
-			sb.WriteString(trackStyle.Render(strings.Repeat(trackRune, empty)))
-		}
-	} else if empty := width - filled; empty > 0 {
+	if empty := width - filled; empty > 0 {
 		sb.WriteString(trackStyle.Render(strings.Repeat(trackRune, empty)))
 	}
 	return sb.String()

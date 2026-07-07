@@ -93,18 +93,25 @@ func TestRenderBarThresholdCellColors(t *testing.T) {
 	}
 }
 
-func TestRenderBarFractionalTip(t *testing.T) {
-	// 55% of 10 cells = 5 full cells + 0.5 fractional → tip glyph index
-	// int(0.5*4) = 2 → "⡄".
+func TestRenderBarWholeCellRounding(t *testing.T) {
+	// The slim fill has no fractional glyphs: 55% of 10 cells = 5.5 rounds
+	// up to 6 fills; 54% = 5.4 rounds down to 5.
 	out := renderBar(55, 100, 10)
-	if !strings.Contains(out, "⡄") {
-		t.Errorf("want fractional tip %q in %q", "⡄", out)
-	}
-	if got := strings.Count(out, barFill); got != 5 {
-		t.Errorf("want 5 full fill cells, got %d in %q", got, out)
+	if got := strings.Count(out, barFill); got != 6 {
+		t.Errorf("55%%: want 6 fill cells, got %d in %q", got, out)
 	}
 	if got := strings.Count(out, trackRune); got != 4 {
-		t.Errorf("want 4 track cells after the tip, got %d in %q", got, out)
+		t.Errorf("55%%: want 4 track cells, got %d in %q", got, out)
+	}
+	out = renderBar(54, 100, 10)
+	if got := strings.Count(out, barFill); got != 5 {
+		t.Errorf("54%%: want 5 fill cells, got %d in %q", got, out)
+	}
+	// No leftover braille tip glyphs from the textured variant.
+	for _, tip := range []string{"⡀", "⡄", "⡆", "⡇"} {
+		if strings.Contains(out, tip) {
+			t.Errorf("bar must not contain braille tip %q: %q", tip, out)
+		}
 	}
 }
 
