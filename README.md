@@ -7,7 +7,7 @@ roctop has two main views — the metrics view and the static info view (`i`):
 ![roctop metrics view](https://raw.githubusercontent.com/x7even/roctop/main/roctop-1.2.1-main.png)
 *Real-time utilisation, memory, power, temperature, clocks, and more*
 
-![roctop info view](https://raw.githubusercontent.com/x7even/roctop/main/roctop-1.2.1-info.jpg)
+![roctop info view](https://raw.githubusercontent.com/x7even/roctop/main/roctop-1.2.1-info.png)
 *Static Info GPU details: VBIOS, PCIe topology, memory vendor, driver version*
 
 ## Features
