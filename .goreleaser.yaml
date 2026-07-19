@@ -9,15 +9,22 @@ builds:
     binary: roctop
     goos:
       - linux
+      - windows
     goarch:
       - amd64
       - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
     ldflags:
       - -s -w -X main.version={{.Version}}
 
 archives:
   - id: default
     formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
     name_template: "roctop_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - LICENSE

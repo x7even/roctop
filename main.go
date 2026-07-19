@@ -61,9 +61,9 @@ func detectBackends() ([]GpuBackend, []GpuData, []ProcessData) {
 		}
 	}
 
-	if sysfs := newSysfsBackend(claimedPCI); sysfs != nil {
-		backends = append(backends, sysfs)
-		gpus, procs := sysfs.CollectData()
+	for _, b := range fallbackBackends(claimedPCI) {
+		backends = append(backends, b)
+		gpus, procs := b.CollectData()
 		allGpus = append(allGpus, gpus...)
 		allProcs = append(allProcs, procs...)
 	}
@@ -78,7 +78,7 @@ var version = "dev"
 // printNoBackends writes the standard "no GPUs" message to stderr.
 func printNoBackends() {
 	fmt.Fprintln(os.Stderr, "error: no supported GPUs found.")
-	fmt.Fprintln(os.Stderr, "roctop requires ROCm (rocm-smi), NVIDIA (nvidia-smi), or a compatible GPU in sysfs.")
+	fmt.Fprintln(os.Stderr, noBackendsHint)
 }
 
 // runSnapshot handles --once: one detection pass (which includes exactly one

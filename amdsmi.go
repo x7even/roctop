@@ -3,9 +3,9 @@ package main
 // amd-smi support for the rocm backend. rocm-smi is deprecated in ROCm 6.x+
 // and some installs ship only amd-smi; when rocm-smi is absent the rocm
 // backend runs on the runners and parsers in this file instead (discovery/
-// identity, per-tick process listing, one-time static info). Parsers are
-// pure functions over captured JSON so they are fixture-testable on GPU-less
-// CI; runners are thin exec wrappers.
+// identity, per-tick process listing, a whole-tick "amd-smi metric" pass,
+// one-time static info). Parsers are pure functions over captured JSON so
+// they are fixture-testable on GPU-less CI; runners are thin exec wrappers.
 
 import (
 	"bytes"
@@ -22,10 +22,16 @@ import (
 
 const amdSMI = "amd-smi"
 
+// amdSmiCmd is the command used to exec amd-smi. selectAmdTool overwrites it
+// with the absolute path findAmdSmi resolved (required on Windows, where
+// amd-smi may live outside PATH and Go 1.19+ refuses relative-path execs).
+var amdSmiCmd = amdSMI
+
 // newAmdSMITool wires the amd-smi runners+parsers into the amdTool role set
-// consumed by rocmBackend. There is no amd-smi equivalent of the legacy
-// whole-tick rocm-smi metrics pass here, so the sysfs-less fallback degrades
-// to identity + processes (metrics stay at their "unavailable" sentinels).
+// consumed by rocmBackend. The sysfs-less fallback path (Windows, or Linux
+// installs where the amdgpu sysfs mapping failed) runs a whole-tick
+// "amd-smi metric" pass on top of discovery, mirroring the legacy rocm-smi
+// metrics collector.
 //
 // RAS/ECC totals come from "amd-smi metric --ecc"; the RAS block breakdown
 // that "rocm-smi --showrasinfo all" provides has no direct amd-smi JSON
@@ -38,7 +44,9 @@ func newAmdSMITool() amdTool {
 		processes:  collectAmdSmiProcesses,
 		staticInfo: amdSmiStaticInfo,
 		collectFull: func() ([]GpuData, []ProcessData) {
-			return amdSmiDiscover(), collectAmdSmiProcesses()
+			gpus := amdSmiDiscover()
+			applyAmdSmiMetrics(runAmdSmiJSON("metric"), gpus)
+			return gpus, collectAmdSmiProcesses()
 		},
 	}
 }
@@ -50,7 +58,7 @@ func runAmdSmiJSON(args ...string) []byte {
 	defer cancel()
 
 	full := append(append([]string{}, args...), "--json")
-	cmd := exec.CommandContext(ctx, amdSMI, full...)
+	cmd := exec.CommandContext(ctx, amdSmiCmd, full...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
@@ -236,6 +244,13 @@ func parseAmdSmiStatic(raw []byte) []GpuData {
 		g.GfxVersion = amdSmiStr(asic, "target_graphics_version")
 		g.PcieBus = amdSmiStr(amdSmiMap(e, "bus"), "bdf")
 
+		if size, ok := amdSmiBytes(amdSmiMap(e, "vram")["size"]); ok {
+			g.VramTotal = size
+		}
+		if max, _, ok := amdSmiFloat(amdSmiPowerLimit(amdSmiMap(e, "limit"))); ok {
+			g.PowerMax = max
+		}
+
 		if part := amdSmiFirmwarePart(e); part != "" {
 			if m := reAmdSmiSKUPart.FindStringSubmatch(part); m != nil {
 				g.SKU = m[1]
@@ -246,6 +261,22 @@ func parseAmdSmiStatic(raw []byte) []GpuData {
 	}
 	sort.Slice(gpus, func(i, j int) bool { return gpus[i].CardID < gpus[j].CardID })
 	return gpus
+}
+
+// amdSmiPowerLimit returns the board max power limit value from a static
+// "limit" block: flat "max_power" on some versions, nested under "ppt0" as
+// "max_power_limit" on amd-smi 26.x.
+func amdSmiPowerLimit(limit map[string]interface{}) interface{} {
+	if limit == nil {
+		return nil
+	}
+	if v, exists := limit["max_power"]; exists {
+		return v
+	}
+	if v, exists := limit["max_power_limit"]; exists {
+		return v
+	}
+	return amdSmiMap(limit, "ppt0")["max_power_limit"]
 }
 
 // amdSmiFirmwarePart returns the VBIOS part number of a static entry. Newer
@@ -330,6 +361,141 @@ func applyAmdSmiEcc(raw []byte, gpus []GpuData) {
 			gpus[idx].RasUncorrectable = int64(v)
 		}
 	}
+}
+
+// ── Metrics ──────────────────────────────────────────────────────────
+
+// applyAmdSmiMetrics fills the per-tick dynamic metrics of rocm-backend GPUs
+// from an "amd-smi metric --json" payload. It backs the paths that cannot
+// read amdgpu sysfs: Windows, and Linux installs where the sysfs mapping
+// failed. Every assignment is guarded by its helper's ok flag, so fields the
+// tool reports as "N/A" (or omits) keep their "unavailable" sentinels.
+func applyAmdSmiMetrics(raw []byte, gpus []GpuData) {
+	for _, e := range parseAmdSmiEntries(raw) {
+		idx := amdSmiGpuIndex(e, gpus)
+		if idx < 0 {
+			continue
+		}
+		g := &gpus[idx]
+
+		usage := amdSmiMap(e, "usage")
+		if v, _, ok := amdSmiFloat(usage["gfx_activity"]); ok {
+			g.GpuUse = v
+		}
+		if v, _, ok := amdSmiFloat(usage["mem_activity"]); ok {
+			g.MemActivity = v
+		}
+		if v, _, ok := amdSmiFloat(usage["umc_activity"]); ok {
+			g.UmcActivity = v
+		}
+
+		temperature := amdSmiMap(e, "temperature")
+		if v, _, ok := amdSmiFloat(temperature["edge"]); ok {
+			g.TempEdge = v
+		}
+		if v, _, ok := amdSmiFloat(temperature["hotspot"]); ok {
+			g.TempJunc = v
+		}
+		if v, _, ok := amdSmiFloat(temperature["mem"]); ok {
+			g.TempMem = v
+		}
+
+		power := amdSmiMap(e, "power")
+		if v, _, ok := amdSmiFloat(power["socket_power"]); ok {
+			g.PowerAvg = v
+		}
+		// throttle_status is a numeric bitmask on boards that report it;
+		// tools that emit "N/A" (or a string) fail amdSmiFloat and keep
+		// the zero "not throttled" sentinel.
+		if v, _, ok := amdSmiFloat(power["throttle_status"]); ok {
+			g.ThrottleStatus = int(v)
+			g.ThrottleReasons = throttleReasons(g.ThrottleStatus)
+		}
+
+		// amd-smi metric emits per-engine clock objects ("gfx_0", "mem_0",
+		// "vclk_0", ...) whose current clock is under "clk". Iterate in
+		// sorted key order so the first ok value per family wins
+		// deterministically.
+		clock := amdSmiMap(e, "clock")
+		clockKeys := make([]string, 0, len(clock))
+		for k := range clock {
+			clockKeys = append(clockKeys, k)
+		}
+		sort.Strings(clockKeys)
+		haveSclk, haveMclk := false, false
+		for _, k := range clockKeys {
+			mhz, ok := amdSmiClockMHz(clock[k])
+			if !ok {
+				continue
+			}
+			switch {
+			case !haveSclk && strings.HasPrefix(k, "gfx"):
+				g.Sclk = mhz
+				haveSclk = true
+			case !haveMclk && strings.HasPrefix(k, "mem"):
+				g.Mclk = mhz
+				haveMclk = true
+			}
+		}
+
+		memUsage := amdSmiMap(e, "mem_usage")
+		if total, ok := amdSmiBytes(memUsage["total_vram"]); ok {
+			g.VramTotal = total
+		}
+		if used, ok := amdSmiBytes(memUsage["used_vram"]); ok {
+			g.VramUsed = used
+			// Percent only when this tick actually reported usage: an
+			// "N/A" used_vram must keep the 0/0 "no data" sentinels even
+			// though discovery already filled VramTotal.
+			if g.VramTotal > 0 {
+				g.VramPercent = float64(used) / float64(g.VramTotal) * 100
+			}
+		}
+
+		fan := amdSmiMap(e, "fan")
+		if v, _, ok := amdSmiFloat(fan["rpm"]); ok {
+			g.FanRPM = int(v)
+		}
+		if v, _, ok := amdSmiFloat(fan["usage"]); ok {
+			g.FanPercent = v
+		} else if speed, _, okSpeed := amdSmiFloat(fan["speed"]); okSpeed {
+			if max, _, okMax := amdSmiFloat(fan["max"]); okMax && max > 0 {
+				g.FanPercent = speed / max * 100
+			}
+		}
+
+		pcie := amdSmiMap(e, "pcie")
+		if v, _, ok := amdSmiFloat(pcie["width"]); ok {
+			g.PcieWidth = int(v)
+		}
+		if v, unit, ok := amdSmiFloat(pcie["speed"]); ok {
+			// amd-smi 24.x emitted MT/s; normalize to the "%.1fGT/s"
+			// format the rocm-smi path produces.
+			if strings.EqualFold(unit, "MT/s") {
+				v /= 1000
+			}
+			g.PcieSpeed = fmt.Sprintf("%.1fGT/s", v)
+		}
+	}
+}
+
+// amdSmiClockMHz extracts a clock value in MHz from one "amd-smi metric"
+// clock entry: an object whose current clock lives under "clk" on current
+// versions, or a plain number on older ones.
+func amdSmiClockMHz(v interface{}) (int, bool) {
+	if m, isMap := v.(map[string]interface{}); isMap {
+		if clk, exists := m["clk"]; exists {
+			v = clk
+		}
+	}
+	f, unit, ok := amdSmiFloat(v)
+	if !ok {
+		return 0, false
+	}
+	if strings.EqualFold(unit, "GHz") {
+		f *= 1000
+	}
+	return int(f), true
 }
 
 // ── Process listing ──────────────────────────────────────────────────

@@ -49,7 +49,8 @@ func selectAmdTool() *amdTool {
 		t := newRocmSMITool()
 		return &t
 	}
-	if _, err := exec.LookPath(amdSMI); err == nil {
+	if path := findAmdSmi(); path != "" {
+		amdSmiCmd = path
 		t := newAmdSMITool()
 		return &t
 	}
@@ -75,6 +76,12 @@ func newRocmSMITool() amdTool {
 
 // ── ROCm backend ────────────────────────────────────────────────────
 
+// procStatsCollector supplies per-process GPU stats without exec'ing the CLI
+// tool. Implementations may return nil to signal "nothing usable this tick".
+type procStatsCollector interface {
+	collect(pdevToGpu map[string]int, nameFn func(int) string) []ProcessData
+}
+
 // rocmBackend discovers GPUs via the AMD CLI tool once at construction, then
 // reads all per-tick metrics straight from sysfs (microseconds instead of
 // four tool execs). The tool remains in use for process listing per tick,
@@ -85,7 +92,7 @@ type rocmBackend struct {
 	tool      amdTool
 	cards     []rocmCard
 	sysfsMode bool // true when every discovered GPU is mapped to sysfs
-	fdinfo    *fdinfoCollector
+	fdinfo    procStatsCollector
 }
 
 // rocmCard couples one rocm-smi GPU's identity (captured at discovery) with
@@ -96,7 +103,7 @@ type rocmCard struct {
 }
 
 func newRocmBackend(tool amdTool) *rocmBackend {
-	b := &rocmBackend{tool: tool, fdinfo: newFdinfoCollector()}
+	b := &rocmBackend{tool: tool, fdinfo: newProcStats()}
 	b.discover()
 	return b
 }
@@ -293,8 +300,10 @@ func backendOrder(name string) int {
 		return 0
 	case "nvidia":
 		return 1
-	case "sysfs":
+	case "wddm":
 		return 2
+	case "sysfs":
+		return 3
 	default:
 		return 9
 	}
@@ -1012,8 +1021,10 @@ func (r *rocmBackend) CollectData() ([]GpuData, []ProcessData) {
 		// Prefer fdinfo processes on the legacy path too; the tool's own
 		// process listing (already attributed) remains the fallback.
 		gpus, procs := r.tool.collectFull()
-		if fdProcs := r.fdinfo.collect(rocmPdevMap(gpus), procName); len(fdProcs) > 0 {
-			procs = fdProcs
+		if r.fdinfo != nil {
+			if fdProcs := r.fdinfo.collect(rocmPdevMap(gpus), procName); len(fdProcs) > 0 {
+				procs = fdProcs
+			}
 		}
 		return gpus, procs
 	}
@@ -1049,8 +1060,10 @@ func rocmPdevMap(gpus []GpuData) map[string]int {
 // yields nothing — e.g. when the GPU processes belong to another uid or a
 // container whose /proc/<pid>/fd is unreadable from here.
 func (r *rocmBackend) collectProcesses(pdevToGpu map[string]int) []ProcessData {
-	if procs := r.fdinfo.collect(pdevToGpu, procName); len(procs) > 0 {
-		return procs
+	if r.fdinfo != nil {
+		if procs := r.fdinfo.collect(pdevToGpu, procName); len(procs) > 0 {
+			return procs
+		}
 	}
 	return r.tool.processes()
 }

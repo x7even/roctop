@@ -2,6 +2,7 @@
 /roctop
 /roctop-bin
 /roctop-dev
+*.exe
 dist/
 
 # Editor / OS
