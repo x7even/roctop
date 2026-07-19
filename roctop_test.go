@@ -5,6 +5,7 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -2254,9 +2255,13 @@ func TestParseFdinfoRejects(t *testing.T) {
 }
 
 // writeFdinfoFd creates one fake fd symlink plus its fdinfo file under a
-// fixture /proc tree.
+// fixture /proc tree. fdinfo is Linux-only DRM machinery, and os.Symlink
+// needs privileges Windows test boxes usually lack, so skip there.
 func writeFdinfoFd(t *testing.T, procRoot string, pid int, fd, target, fdinfo string) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("fdinfo fixtures need symlinks; Linux-only DRM machinery")
+	}
 	base := fmt.Sprintf("%s/%d", procRoot, pid)
 	for _, d := range []string{base + "/fd", base + "/fdinfo"} {
 		if err := os.MkdirAll(d, 0o755); err != nil {

@@ -42,5 +42,46 @@ jobs:
         with:
           version: latest
 
+      # Second action invocation: the action never puts golangci-lint on
+      # PATH, so a bare `run: golangci-lint run` would exit 127.
+      - name: golangci-lint (GOOS=windows)
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest
+          skip-cache: true # first invocation owns the cache
+          # unused is disabled here: sysfs.go/fdinfo.go stay untagged by design, so
+          # their symbols are only referenced from linux-tagged files and look dead
+          # under GOOS=windows. The linux lint run above still checks unused.
+          args: --disable=unused
+        env:
+          GOOS: windows
+
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+  test-windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        run: go build ./...
+
+      - name: Test
+        run: go test -v ./...
+
+      - name: Smoke test (--once)
+        shell: pwsh
+        run: |
+          go build -o roctop.exe .
+          .\roctop.exe --once
+          if (($LASTEXITCODE -ne 0) -and ($LASTEXITCODE -ne 1)) {
+            Write-Error "roctop.exe --once exited with unexpected code $LASTEXITCODE"
+            exit 1
+          }
+          exit 0

@@ -1,0 +1,29 @@
+{
+  "_comment": "Synthetic PDH GPU counter capture pending a real typeperf dump from the maintainer's Windows box. Two adapters (LUID ...C51E -> gpu 0, ...D20A -> gpu 1) plus one unmapped LUID (...FFFF); pid 0 idle accounting; engtypes with underscores and spaces.",
+  "engine": [
+    {"name": "pid_0_luid_0x00000000_0x0000C51E_phys_0_eng_0_engtype_3D", "val": 12.5},
+    {"name": "pid_1234_luid_0x00000000_0x0000C51E_phys_0_eng_0_engtype_3D", "val": 30.0},
+    {"name": "pid_1234_luid_0x00000000_0x0000C51E_phys_0_eng_1_engtype_3D", "val": 20.0},
+    {"name": "pid_1234_luid_0x00000000_0x0000C51E_phys_0_eng_2_engtype_Copy", "val": 10.0},
+    {"name": "pid_1234_luid_0x00000000_0x0000C51E_phys_0_eng_7_engtype_High Priority Compute", "val": 5.0},
+    {"name": "pid_1234_luid_0x00000000_0x0000D20A_phys_0_eng_0_engtype_3D", "val": 0.0},
+    {"name": "pid_5678_luid_0x00000000_0x0000C51E_phys_0_eng_4_engtype_Compute_0", "val": 40.0},
+    {"name": "pid_5678_luid_0x00000000_0x0000C51E_phys_0_eng_5_engtype_Compute_0", "val": 70.0},
+    {"name": "pid_5678_luid_0x00000000_0x0000D20A_phys_0_eng_0_engtype_3D", "val": 25.0},
+    {"name": "pid_5678_luid_0x00000000_0x0000FFFF_phys_0_eng_0_engtype_3D", "val": 99.0},
+    {"name": "pid_4444_luid_0x00000000_0x0000FFFF_phys_0_eng_0_engtype_Copy", "val": 33.0}
+  ],
+  "procMem": [
+    {"name": "pid_0_luid_0x00000000_0x0000C51E_phys_0", "val": 4194304},
+    {"name": "pid_1234_luid_0x00000000_0x0000C51E_phys_0", "val": 268435456},
+    {"name": "pid_5678_luid_0x00000000_0x0000C51E_phys_0", "val": 1073741824},
+    {"name": "pid_5678_luid_0x00000000_0x0000D20A_phys_0", "val": 536870912},
+    {"name": "pid_5678_luid_0x00000000_0x0000FFFF_phys_0", "val": 999999},
+    {"name": "pid_9012_luid_0x00000000_0x0000D20A_phys_0", "val": 134217728}
+  ],
+  "adapterMem": [
+    {"name": "luid_0x00000000_0x0000C51E_phys_0", "val": 3221225472},
+    {"name": "luid_0x00000000_0x0000D20A_phys_0", "val": 1610612736},
+    {"name": "luid_0x00000000_0x0000FFFF_phys_0", "val": 555}
+  ]
+}

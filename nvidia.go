@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -285,12 +284,4 @@ func parseNvidiaProcesses(output string, busToCard map[string]int, nameFn func(i
 		return result[i].VramUsed > result[j].VramUsed
 	})
 	return result
-}
-
-func procName(pid int) string {
-	data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/comm")
-	if err != nil {
-		return "unknown"
-	}
-	return strings.TrimSpace(string(data))
 }

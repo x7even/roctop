@@ -2,14 +2,26 @@ package main
 
 // Tests for the amd-smi runners and parsers. The testdata/amdsmi_*.json
 // fixtures are real output captured from amd-smi 26.2.1 (ROCm 7.2) on a
-// 4x AMD Radeon AI PRO R9700 machine running a live vllm workload.
+// 4x AMD Radeon AI PRO R9700 machine running a live vllm workload — except
+// testdata/amdsmi_metric.json, which is SYNTHETIC (see its test).
 
 import (
 	"math"
 	"os"
 	"os/exec"
+	"runtime"
 	"testing"
 )
+
+// skipFakeToolOnWindows guards tests that plant extension-less "#!/bin/sh"
+// fake binaries: Windows exec.LookPath only resolves PATHEXT extensions and
+// cannot run shell scripts anyway.
+func skipFakeToolOnWindows(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("fake tools are #!/bin/sh scripts; not runnable on Windows")
+	}
+}
 
 func readFixture(t *testing.T, name string) []byte {
 	t.Helper()
@@ -121,6 +133,12 @@ func TestParseAmdSmiStaticFixture(t *testing.T) {
 		if g.SKU != "APM107573" {
 			t.Errorf("GPU %d: SKU = %q, want APM107573", i, g.SKU)
 		}
+		if g.VramTotal != 32624<<20 {
+			t.Errorf("GPU %d: VramTotal = %d, want %d", i, g.VramTotal, int64(32624)<<20)
+		}
+		if g.PowerMax != 300 {
+			t.Errorf("GPU %d: PowerMax = %v, want 300 (limit.ppt0.max_power_limit)", i, g.PowerMax)
+		}
 		// Identity-only: dynamic metrics must keep their sentinels.
 		if !math.IsNaN(g.GpuUse) || !math.IsNaN(g.PowerAvg) {
 			t.Errorf("GPU %d: dynamic metrics not at sentinels (use=%v pwr=%v)", i, g.GpuUse, g.PowerAvg)
@@ -195,6 +213,104 @@ func TestApplyAmdSmiEccNonzeroAndNA(t *testing.T) {
 	// N/A counts must leave existing values untouched.
 	if gpus[1].RasCorrectable != 7 {
 		t.Errorf("GPU 1 RasCorrectable = %d, want 7 (unchanged)", gpus[1].RasCorrectable)
+	}
+}
+
+// ── Metrics ──────────────────────────────────────────────────────────
+
+// TestApplyAmdSmiMetricsFixture: testdata/amdsmi_metric.json is SYNTHETIC
+// (authored to mirror amd-smi 25.x field names) pending a real Windows
+// capture; see parent plan Phase A verification.
+func TestApplyAmdSmiMetricsFixture(t *testing.T) {
+	gpus := []GpuData{newGpuData(0, "rocm"), newGpuData(0, "sysfs")}
+	gpus[0].PcieBus = "0000:03:00.0"
+
+	applyAmdSmiMetrics(readFixture(t, "amdsmi_metric.json"), gpus)
+
+	g := gpus[0]
+	if g.GpuUse != 87 {
+		t.Errorf("GpuUse = %v, want 87", g.GpuUse)
+	}
+	if g.UmcActivity != 41 {
+		t.Errorf("UmcActivity = %v, want 41", g.UmcActivity)
+	}
+	if !math.IsNaN(g.MemActivity) {
+		t.Errorf("MemActivity = %v, want NaN (fixture reports N/A)", g.MemActivity)
+	}
+	if g.TempEdge != 58 || g.TempJunc != 74 || g.TempMem != 66 {
+		t.Errorf("temps = %v/%v/%v, want 58/74/66", g.TempEdge, g.TempJunc, g.TempMem)
+	}
+	if g.PowerAvg != 246 {
+		t.Errorf("PowerAvg = %v, want 246", g.PowerAvg)
+	}
+	if g.Sclk != 2890 {
+		t.Errorf("Sclk = %d, want 2890", g.Sclk)
+	}
+	if g.Mclk != 1258 {
+		t.Errorf("Mclk = %d, want 1258", g.Mclk)
+	}
+	if g.VramTotal != 32624<<20 {
+		t.Errorf("VramTotal = %d, want %d", g.VramTotal, int64(32624)<<20)
+	}
+	if g.VramUsed != 28123<<20 {
+		t.Errorf("VramUsed = %d, want %d", g.VramUsed, int64(28123)<<20)
+	}
+	wantPct := float64(28123) / float64(32624) * 100
+	if math.Abs(g.VramPercent-wantPct) > 1e-9 {
+		t.Errorf("VramPercent = %v, want %v", g.VramPercent, wantPct)
+	}
+	if g.FanRPM != 1420 {
+		t.Errorf("FanRPM = %d, want 1420", g.FanRPM)
+	}
+	if g.FanPercent != 36 {
+		t.Errorf("FanPercent = %v, want 36", g.FanPercent)
+	}
+	if g.PcieWidth != 16 {
+		t.Errorf("PcieWidth = %d, want 16", g.PcieWidth)
+	}
+	if g.PcieSpeed != "32.0GT/s" {
+		t.Errorf("PcieSpeed = %q, want 32.0GT/s", g.PcieSpeed)
+	}
+
+	// The non-rocm decoy sharing CardID 0 must stay untouched.
+	decoy := gpus[1]
+	if !math.IsNaN(decoy.GpuUse) || !math.IsNaN(decoy.PowerAvg) || decoy.VramUsed != 0 || decoy.Sclk != 0 {
+		t.Errorf("sysfs decoy received rocm metrics: %+v", decoy)
+	}
+}
+
+func TestApplyAmdSmiMetricsNAPlaceholders(t *testing.T) {
+	gpus := []GpuData{newGpuData(0, "rocm"), newGpuData(1, "rocm")}
+	// Bare-array top level; GPU 0 is all "N/A" / missing blocks, GPU 1
+	// carries an old-style plain-number clock.
+	payload := `[
+		{"gpu": 0,
+		 "usage": {"gfx_activity": "N/A", "mem_activity": "N/A", "umc_activity": "N/A"},
+		 "temperature": {"edge": "N/A", "hotspot": "N/A", "mem": "N/A"},
+		 "power": {"socket_power": "N/A"},
+		 "clock": {"gfx_0": {"clk": "N/A"}, "mem_0": "N/A"},
+		 "mem_usage": {"total_vram": "N/A", "used_vram": "N/A"},
+		 "fan": {"speed": "N/A", "max": "N/A", "rpm": "N/A", "usage": "N/A"},
+		 "pcie": {"width": "N/A", "speed": "N/A"}},
+		{"gpu": 1, "clock": {"gfx_0": 500}}
+	]`
+
+	applyAmdSmiMetrics([]byte(payload), gpus)
+
+	g := gpus[0]
+	if !math.IsNaN(g.GpuUse) || !math.IsNaN(g.MemActivity) || !math.IsNaN(g.PowerAvg) {
+		t.Errorf("usage/power sentinels overwritten: use=%v mem=%v pwr=%v", g.GpuUse, g.MemActivity, g.PowerAvg)
+	}
+	if !math.IsNaN(g.TempEdge) || !math.IsNaN(g.TempJunc) || !math.IsNaN(g.TempMem) {
+		t.Errorf("temp sentinels overwritten: %v/%v/%v", g.TempEdge, g.TempJunc, g.TempMem)
+	}
+	if g.UmcActivity != 0 || g.Sclk != 0 || g.Mclk != 0 || g.VramTotal != 0 ||
+		g.VramUsed != 0 || g.VramPercent != 0 || g.FanRPM != 0 || g.FanPercent != 0 ||
+		g.PcieWidth != 0 || g.PcieSpeed != "" {
+		t.Errorf("zero sentinels overwritten: %+v", g)
+	}
+	if gpus[1].Sclk != 500 {
+		t.Errorf("plain-number clock: Sclk = %d, want 500", gpus[1].Sclk)
 	}
 }
 
@@ -278,6 +394,7 @@ func TestParseAmdSmiProcessesDefensiveShapes(t *testing.T) {
 // ── Tool selection and fallback wiring ───────────────────────────────
 
 func TestSelectAmdToolPrefersRocmSMI(t *testing.T) {
+	skipFakeToolOnWindows(t)
 	binDir := t.TempDir()
 	for _, name := range []string{"rocm-smi", "amd-smi"} {
 		if err := os.WriteFile(binDir+"/"+name, []byte("#!/bin/sh\n"), 0o755); err != nil {
@@ -285,6 +402,7 @@ func TestSelectAmdToolPrefersRocmSMI(t *testing.T) {
 		}
 	}
 	t.Setenv("PATH", binDir)
+	t.Cleanup(func() { amdSmiCmd = amdSMI })
 	tool := selectAmdTool()
 	if tool == nil || tool.name != "rocm-smi" {
 		t.Fatalf("tool = %+v, want rocm-smi", tool)
@@ -292,19 +410,25 @@ func TestSelectAmdToolPrefersRocmSMI(t *testing.T) {
 }
 
 func TestSelectAmdToolFallsBackToAmdSMI(t *testing.T) {
+	skipFakeToolOnWindows(t)
 	binDir := t.TempDir()
 	if err := os.WriteFile(binDir+"/amd-smi", []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", binDir)
+	t.Cleanup(func() { amdSmiCmd = amdSMI })
 	tool := selectAmdTool()
 	if tool == nil || tool.name != "amd-smi" {
 		t.Fatalf("tool = %+v, want amd-smi", tool)
+	}
+	if amdSmiCmd != binDir+"/amd-smi" {
+		t.Errorf("amdSmiCmd = %q, want %s/amd-smi (resolved path)", amdSmiCmd, binDir)
 	}
 }
 
 func TestSelectAmdToolNeitherInstalled(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
+	t.Cleanup(func() { amdSmiCmd = amdSMI })
 	if tool := selectAmdTool(); tool != nil {
 		t.Fatalf("tool = %+v, want nil", tool)
 	}
@@ -315,10 +439,12 @@ func TestSelectAmdToolNeitherInstalled(t *testing.T) {
 // mapping fails (bogus PCI bus), and CollectData degrades to the identity +
 // process fallback.
 func TestRocmBackendViaFakeAmdSmi(t *testing.T) {
+	skipFakeToolOnWindows(t)
 	binDir := t.TempDir()
 	script := `#!/bin/sh
 case "$1" in
 static) echo '{"gpu_data": [{"gpu": 0, "asic": {"market_name": "Fake amd-smi GPU"}, "bus": {"bdf": "0000:ff:1f.7"}}]}' ;;
+metric) echo '{"gpu_data": [{"gpu": 0, "bus": {"bdf": "0000:ff:1f.7"}, "usage": {"gfx_activity": 55}}]}' ;;
 process) echo '[{"gpu": 0, "process_list": [{"process_info": {"name": "/usr/bin/fake", "pid": 42, "memory_usage": {"vram_mem": {"value": 1000, "unit": "B"}}}}]}]' ;;
 esac
 `
@@ -326,6 +452,7 @@ esac
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", binDir)
+	t.Cleanup(func() { amdSmiCmd = amdSMI })
 
 	tool := selectAmdTool()
 	if tool == nil || tool.name != "amd-smi" {
@@ -342,6 +469,10 @@ esac
 	if len(gpus) != 1 || gpus[0].Name != "Fake amd-smi GPU" {
 		t.Fatalf("gpus = %+v, want one Fake amd-smi GPU", gpus)
 	}
+	// The metric pass must run inside collectFull.
+	if gpus[0].GpuUse != 55 {
+		t.Errorf("gpus[0].GpuUse = %v, want 55 (from fake metric payload)", gpus[0].GpuUse)
+	}
 	if len(procs) != 1 || procs[0].PID != 42 || procs[0].Name != "fake" || procs[0].VramUsed != 1000 {
 		t.Fatalf("procs = %+v, want PID 42 'fake' 1000 B", procs)
 	}
@@ -356,6 +487,11 @@ func TestLiveAmdSmi(t *testing.T) {
 	if _, err := exec.LookPath(amdSMI); err != nil {
 		t.Skip("amd-smi not installed")
 	}
+	// amdSmiCmd is package-level mutable state; re-resolve it here so a
+	// selectAmdTool test running earlier with a fake PATH cannot leave a
+	// stale (deleted) temp binary behind.
+	amdSmiCmd = findAmdSmi()
+	t.Cleanup(func() { amdSmiCmd = amdSMI })
 	gpus := amdSmiDiscover()
 	if len(gpus) == 0 {
 		t.Skip("amd-smi reported no GPUs")

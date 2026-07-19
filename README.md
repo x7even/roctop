@@ -43,7 +43,27 @@ roctop auto-detects all available backends. On a mixed system (e.g., NVIDIA disc
 
 Metrics that aren't available for a given GPU are shown in dark red to distinguish "no data" from a real zero.
 
-Requires Linux and at least one of: `rocm-smi` on PATH, `nvidia-smi` on PATH, or a GPU with sysfs/hwmon support. No other dependencies.
+Requires Linux (or Windows — see [Windows support](#windows-support-experimental)) and at least one of: `rocm-smi` on PATH, `nvidia-smi` on PATH, or a GPU with sysfs/hwmon support. No other dependencies.
+
+## Windows support (experimental)
+
+Windows support is new and still being validated on real hardware — treat it as experimental.
+
+| GPU Type | Backend | Requirement |
+|----------|---------|-------------|
+| NVIDIA discrete | `nvidia-smi` | NVIDIA drivers installed (`nvidia-smi` ships with the driver) — works out of the box |
+| AMD discrete | `amd-smi` | [ROCm HIP SDK](https://rocm.docs.amd.com/) 7.2+ on RDNA4, `amd-smi` on `PATH` or in the default install location |
+| Any WDDM GPU (AMD, NVIDIA, Intel) | `wddm` | None — built in, reads the same GPU performance counters as Task Manager |
+
+The built-in `wddm` backend provides utilisation, VRAM, and per-process GPU usage for any GPU with a WDDM driver — including Intel. Windows performance counters don't expose temperatures, power, or clocks, so those panels show n/a unless a vendor tool (`nvidia-smi` / `amd-smi`) covers the GPU.
+
+[Windows Terminal](https://aka.ms/terminal) is recommended — the legacy conhost console renders braille sparklines and colours poorly.
+
+Install: download the Windows zip from the [releases page](https://github.com/x7even/roctop/releases), or with Go 1.24+:
+
+```powershell
+go install github.com/x7even/roctop@latest
+```
 
 ## Installation
 
@@ -148,7 +168,7 @@ roctop/
 ├── applog.go        # In-memory event log (backend warnings, rocm-smi errors)
 ├── logpanel.go      # Event log panel renderer
 ├── go.mod
-└── .goreleaser.yaml # Release config (linux amd64 + arm64 tarballs)
+└── .goreleaser.yaml # Release config (linux tarballs + windows zip)
 ```
 
 ## License
