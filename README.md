@@ -1,3 +1,5 @@
+
+
 # roctop
 
 A terminal UI for real-time GPU monitoring on Linux — supports AMD (ROCm), NVIDIA, and integrated GPUs. Inspired by the fantastic work of [btop](https://github.com/aristocratos/btop).
@@ -34,7 +36,7 @@ roctop has two main views — the metrics view and the static info view (`i`):
 
 | GPU Type | Backend | Requirement |
 |----------|---------|-------------|
-| AMD discrete | `rocm-smi` | [ROCm](https://rocm.docs.amd.com/) installed, `rocm-smi` on `$PATH` |
+| AMD discrete | `rocm-smi` / `amd-smi` | [ROCm](https://rocm.docs.amd.com/) installed, `rocm-smi` or `amd-smi` on `$PATH` |
 | NVIDIA discrete | `nvidia-smi` | NVIDIA drivers installed, `nvidia-smi` on `$PATH` |
 | AMD integrated (iGPU / APU) | `sysfs` | `amdgpu` kernel driver loaded (native Linux) |
 | Intel integrated (iGPU) | `sysfs` | `i915` or `xe` kernel driver loaded (native Linux) |
