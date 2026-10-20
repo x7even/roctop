@@ -190,12 +190,15 @@ func TestRenderTuneLineEmptyWithoutData(t *testing.T) {
 	if line := renderTuneLine(GpuData{}, 120, 5); line != "" {
 		t.Errorf("renderTuneLine(zero GpuData) = %q, want \"\"", line)
 	}
-	// An NVIDIA card: real metrics, but no cap context and no OD table.
+	// A card with real metrics but no cap context and no OD table — an
+	// NVIDIA GPU whose static-limit query failed, or any card the driver
+	// reports no limits for. See TestRenderTuneLineNvidiaCap for the row an
+	// NVIDIA card does produce once its limits are known.
 	nv := newGpuData(0, "nvidia")
 	nv.PowerAvg = 120
 	nv.PowerMax = 350
 	if line := renderTuneLine(nv, 120, 5); line != "" {
-		t.Errorf("renderTuneLine(nvidia) = %q, want \"\" until phase two", line)
+		t.Errorf("renderTuneLine(no limits) = %q, want \"\"", line)
 	}
 }
 
