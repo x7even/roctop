@@ -465,6 +465,11 @@ func renderInfoLines(gpu GpuData, cw int, showBackendTag bool) []string {
 		perfLevel = "auto"
 	}
 
+	// A card with no voltage sensor (NVIDIA, Intel iGPU, amdgpu without
+	// in0_input) must read N/A, not 0mV — fmtMvOrEmpty treats both 0 and NaN
+	// as "not reported".
+	voltage := fmtMvOrEmpty(gpu.Voltage)
+
 	var throttleLine string
 	if gpu.ThrottleStatus != 0 {
 		reasons := "ACTIVE"
@@ -479,9 +484,9 @@ func renderInfoLines(gpu GpuData, cw int, showBackendTag bool) []string {
 		throttleLine = labelStyle.Render(fmt.Sprintf("%-10s", "Throttle:")) +
 			" " + warnStyle.Render(fmt.Sprintf("%-*s", colW, "⚠ "+reasons)) +
 			"  " + labelStyle.Render(fmt.Sprintf("%-10s", "Voltage:")) +
-			" " + boldStyle.Render(fmt.Sprintf("%.0fmV", gpu.Voltage))
+			" " + boldStyle.Render(orNA(voltage))
 	} else {
-		throttleLine = kvRow("Throttle", "none", "Voltage", fmt.Sprintf("%.0fmV", gpu.Voltage))
+		throttleLine = kvRow("Throttle", "none", "Voltage", voltage)
 	}
 
 	// ECC / RAS errors (ROCm only)

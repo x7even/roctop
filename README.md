@@ -16,7 +16,7 @@ roctop has two main views — the metrics view and the static info view (`i`):
 - Multi-row braille sparklines with status colouring (steel, amber past 75%, red past 90%) — variation within narrow ranges stays visible
 - PCIe bandwidth monitoring — TX/RX rates with all-time peak tracking (AMD and NVIDIA)
 - Throttle detection with reason decoding (THERMAL, POWER_LIMIT, etc.)
-- Power limit, voltage and OverDrive readout (AMD) — the cap in force against the board default, the live core voltage, and the undervolt / core-clock / memory-clock offsets applied by tools like `gpucap`, with the range the firmware accepts. Read-only: roctop never writes to the driver
+- Power limit and clock ceiling readout (AMD and NVIDIA) — the cap in force against the board default, the range the firmware accepts, and the core / memory clock ceilings. On AMD this extends to the live core voltage and the undervolt / core-clock / memory-clock offsets applied by tools like `gpucap`. Read-only: roctop never writes to the driver
 - ECC/RAS error detection — warnings shown in info view with correctable/uncorrectable counts
 
 - Static info view (press `i`): VBIOS, PCIe topology, memory vendor, driver, unique ID
@@ -132,7 +132,14 @@ roctop uses three backends depending on what's available:
 
 At startup, roctop probes ROCm and NVIDIA backends first, records which PCI bus addresses they claim, then discovers any remaining GPUs via sysfs to avoid double-counting.
 
-### Power limit, voltage and OverDrive (AMD)
+### Power limits, voltage and OverDrive
+
+The `TUNE` row in the metrics view appears only when a card has something to
+report, and the power cap is shown there only when it differs from the board
+default — the `PWR` bar already shows the cap in force, so what it cannot tell
+you is whether something moved it. The info view (`i`) adds the full ranges.
+
+#### AMD
 
 These come from sysfs on every AMD card, whichever backend supplies the rest of
 the metrics:
@@ -144,11 +151,6 @@ the metrics:
 | Core / memory clock ceiling | top level of `pp_dpm_sclk` / `pp_dpm_mclk` |
 | Voltage, core-clock and memory-clock offsets + accepted ranges | `pp_od_clk_voltage` |
 
-The `TUNE` row in the metrics view appears only when a card has something to
-report, and the power cap is shown there only when it differs from the board
-default — the `PWR` bar already shows the cap in force, so what it cannot tell
-you is whether something moved it. The info view (`i`) adds the full ranges.
-
 `pp_od_clk_voltage` exists only when the `amdgpu` OverDrive bit is enabled
 (`options amdgpu ppfeaturemask=0xfff7ffff`). Without it the OverDrive rows are
 simply absent; nothing else is affected. The file's format also varies by
@@ -157,6 +159,28 @@ curves — so roctop reports a setting only when the driver states it as an
 offset it understands, rather than guessing. Note that the OverDrive memory
 ceiling is what was *requested*: the DPM table may top out lower, and roctop
 shows both.
+
+#### NVIDIA
+
+| Reading | Source (`nvidia-smi --query-gpu=`) |
+|---------|------------------------------------|
+| Cap in force | `power.limit` |
+| Board default, cap range | `power.default_limit`, `power.min_limit`, `power.max_limit` |
+| Core / memory clock ceiling | `clocks.max.graphics`, `clocks.max.memory` |
+
+The limits that cannot change while the driver is loaded are queried once and
+cached, as a second `nvidia-smi` call: an unrecognised field name makes
+`nvidia-smi` fail the *whole* query, so folding them into the per-refresh query
+would risk every metric on a driver that lacks one of them. Anything the driver
+reports as `[N/A]` is shown as N/A rather than as a zero.
+
+Two readings have no NVIDIA equivalent. **Core voltage** is not available at
+all — it was deprecated around driver 570 and dropped from `nvidia-smi -q` in
+the 575–580 series, and NVML never exposed it. **Clock and voltage offsets**
+(the counterpart of the AMD OverDrive rows) are not readable through
+`nvidia-smi` either; they would need NVML or `nvidia-settings`, which means
+linking a driver library at runtime and giving up the single static binary.
+Those rows are therefore simply absent on NVIDIA cards rather than shown empty.
 
 Reading these is deliberately all roctop does — applying a cap or an undervolt
 is the job of a separate tool run as root. roctop opens nothing for writing.

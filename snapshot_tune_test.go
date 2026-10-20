@@ -171,6 +171,7 @@ func TestInfoLinesShowTuningRows(t *testing.T) {
 	out := plainText(strings.Join(renderInfoLines(gpu, 100, false), "\n"))
 	for _, want := range []string{
 		"Pwr Cap", "210W",
+		"Voltage", "604mV",
 		"Cap Range", "210-330W",
 		"Clk Max", "2350/1300MHz",
 		"V Offset", "-20mV",

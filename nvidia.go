@@ -10,10 +10,25 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
-type nvidiaBackend struct{}
+type nvidiaBackend struct {
+	mu            sync.Mutex // guards the static-limit cache; bubbletea can run overlapping collection goroutines
+	limits        map[string]nvStatic
+	limitFailures int
+	// queryFn runs nvidia-smi; nil means the real binary. Injected so the
+	// cache and retry logic are testable without an NVIDIA GPU.
+	queryFn func(args ...string) string
+}
+
+func (n *nvidiaBackend) query(args ...string) string {
+	if n.queryFn != nil {
+		return n.queryFn(args...)
+	}
+	return runNvidiaSMI(args...)
+}
 
 func (n *nvidiaBackend) Name() string { return "nvidia" }
 
@@ -28,9 +43,131 @@ var nvidiaGPUQuery = []string{
 
 func (n *nvidiaBackend) CollectData() ([]GpuData, []ProcessData) {
 	gpus := n.collectGPUs()
+	applyNvidiaStatic(gpus, n.staticLimits())
 	n.collectBandwidth(gpus)
 	procs := n.collectProcesses(gpus)
 	return gpus, procs
+}
+
+// ── Power limits and clock ceilings ───────────────────────────────────
+//
+// The board default, the minimum settable cap and the two clock ceilings
+// never change while the driver is loaded, so they are queried once and
+// cached rather than on every refresh. They live here rather than in
+// CollectStaticInfo because --once never runs that pass, and a snapshot
+// should carry the same cap context the TUI shows.
+//
+// This is a second nvidia-smi invocation on purpose: an unknown field name
+// makes nvidia-smi fail the *whole* query, so adding these to the per-tick
+// query would cost every metric on any driver that lacks one of them.
+var nvidiaStaticQuery = []string{
+	"--query-gpu=pci.bus_id,power.default_limit,power.min_limit," +
+		"clocks.max.graphics,clocks.max.memory",
+	"--format=csv,noheader,nounits",
+}
+
+// nvStatic holds one card's unchanging limits. Power values are NaN and
+// clocks 0 when the driver reports them as [N/A] or [Not Supported].
+type nvStatic struct {
+	capDefault float64
+	capMin     float64
+	sclkMax    int
+	mclkMax    int
+}
+
+// nvidiaStaticAttempts caps the retries after a failed query so a driver
+// that rejects one of these field names costs a handful of subprocesses
+// rather than one per refresh, forever.
+const nvidiaStaticAttempts = 3
+
+// staticLimits returns the cached limits, querying on first use. A failed
+// query is retried on later refreshes rather than cached as "unavailable":
+// a single nvidia-smi timeout at startup must not blank the readout for
+// the life of the process.
+func (n *nvidiaBackend) staticLimits() map[string]nvStatic {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	if n.limits != nil {
+		return n.limits
+	}
+	if limits := parseNvidiaStatic(n.query(nvidiaStaticQuery...)); len(limits) > 0 {
+		n.limits = limits
+		return n.limits
+	}
+	n.limitFailures++
+	if n.limitFailures >= nvidiaStaticAttempts {
+		logf("warning: nvidia-smi reported no power limits after %d attempts; "+
+			"cap range and clock ceilings will be unavailable", n.limitFailures)
+		n.limits = map[string]nvStatic{} // give up; non-nil stops the retries
+		return n.limits
+	}
+	return nil
+}
+
+// parseNvidiaStatic parses the CSV of nvidiaStaticQuery, keyed by
+// normalized PCI bus address. Rows without a usable bus id are dropped —
+// the bus id is the only thing that joins them to a GPU.
+func parseNvidiaStatic(output string) map[string]nvStatic {
+	if output == "" {
+		return nil
+	}
+	r := csv.NewReader(strings.NewReader(output))
+	r.TrimLeadingSpace = true
+
+	limits := make(map[string]nvStatic)
+	for {
+		f, err := r.Read()
+		if err != nil {
+			break
+		}
+		if len(f) < 5 {
+			continue
+		}
+		bus := normalizePCI(f[0])
+		if bus == "" {
+			continue
+		}
+		limits[bus] = nvStatic{
+			capDefault: sanePowerW(parseFloat(f[1], math.NaN())),
+			capMin:     sanePowerW(parseFloat(f[2], math.NaN())),
+			sclkMax:    parseInt(f[3], 0),
+			mclkMax:    parseInt(f[4], 0),
+		}
+	}
+	if len(limits) == 0 {
+		return nil
+	}
+	return limits
+}
+
+// applyNvidiaStatic joins the cached limits onto the collected GPUs by PCI
+// bus address, leaving a GPU untouched when its bus is absent.
+func applyNvidiaStatic(gpus []GpuData, limits map[string]nvStatic) {
+	if len(limits) == 0 {
+		return
+	}
+	for i := range gpus {
+		lim, ok := limits[normalizePCI(gpus[i].PcieBus)]
+		if !ok {
+			continue
+		}
+		gpus[i].PowerCapDefault = lim.capDefault
+		gpus[i].PowerCapMin = lim.capMin
+		gpus[i].SclkMax = lim.sclkMax
+		gpus[i].MclkMax = lim.mclkMax
+	}
+}
+
+// sanePowerW rejects the all-ones sentinel some drivers return for an
+// unsupported power limit (4294967.50 W, i.e. UINT32_MAX mW) along with
+// zero and negative readings. Without this a single bad field scales the
+// power bar to megawatts.
+func sanePowerW(w float64) float64 {
+	if math.IsNaN(w) || w <= 0 || w > 10000 {
+		return math.NaN()
+	}
+	return w
 }
 
 func runNvidiaSMI(args ...string) string {
@@ -80,11 +217,15 @@ func parseNvidiaGPULine(f []string) GpuData {
 	gpu := GpuData{
 		Vendor:  "NVIDIA",
 		Backend: "nvidia",
-		// Power-limit context and OverDrive state are AMD-only for now:
-		// NaN keeps the renderer from claiming a 0 W default or a 0 mV offset.
+		// The cap context is filled from the query below and from the cached
+		// static limits; NaN is the starting point so a card that reports
+		// [N/A] is never shown as a 0 W default. Voltage and the OverDrive
+		// offsets stay unset: nvidia-smi exposes neither (core voltage was
+		// removed in the 575-580 series, and clock offsets need NVML).
 		PowerCapDefault: math.NaN(),
 		PowerCapMin:     math.NaN(),
 		PowerCapMax:     math.NaN(),
+		Voltage:         math.NaN(),
 		PcieTxBytes:     -1,
 		PcieRxBytes:     -1,
 		PcieBwTxDelta:   -1,
@@ -112,12 +253,13 @@ func parseNvidiaGPULine(f []string) GpuData {
 	}
 
 	gpu.PowerAvg = parseFloat(f[7], 0)
-	gpu.PowerMax = parseFloat(f[8], 0)
-	if gpu.PowerMax == 0 {
-		gpu.PowerMax = parseFloat(f[9], 0) // fall back to power.max_limit
-	}
-	if gpu.PowerMax == 0 {
-		gpu.PowerMax = math.NaN() // let panel handle unknown limit
+	// Sanitise before falling back: a card reporting the UINT32_MAX sentinel
+	// for power.limit should drop through to power.max_limit, not scale the
+	// power bar to megawatts.
+	gpu.PowerMax = sanePowerW(parseFloat(f[8], math.NaN()))
+	gpu.PowerCapMax = sanePowerW(parseFloat(f[9], math.NaN()))
+	if math.IsNaN(gpu.PowerMax) {
+		gpu.PowerMax = gpu.PowerCapMax // fall back to power.max_limit
 	}
 
 	gpu.FanPercent = parseFloat(f[10], 0)
