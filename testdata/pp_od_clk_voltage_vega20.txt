@@ -1,0 +1,14 @@
+OD_SCLK:
+0:        701Mhz
+1:       1801Mhz
+OD_MCLK:
+1:       1000Mhz
+OD_VDDC_CURVE:
+0:        701Mhz        800mV
+1:       1251Mhz        900mV
+2:       1801Mhz       1050mV
+OD_RANGE:
+SCLK:     701Mhz       2200Mhz
+MCLK:     674Mhz       1200Mhz
+VDDC_CURVE_SCLK[0]:     701Mhz       2200Mhz
+VDDC_CURVE_VOLT[0]:     750mV        1200mV
