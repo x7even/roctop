@@ -198,13 +198,30 @@ type GpuData struct {
 	PowerAvg float64
 	PowerMax float64
 
+	// Power limit context around PowerMax (which is the cap in force).
+	// Watts; NaN = unavailable. Vendor-neutral: nvidia-smi reports the same
+	// three values, so the nvidia backend can fill them without new fields.
+	PowerCapDefault float64 // board default — PowerMax below it means something capped the card
+	PowerCapMin     float64 // lowest cap the firmware accepts
+	PowerCapMax     float64 // highest cap the firmware accepts
+
 	FanRPM     int
 	FanPercent float64
 
 	Sclk int
 	Mclk int
 
+	// Clock ceilings from the DPM tables (MHz; 0 = unavailable). These scale
+	// the live Sclk/Mclk readings into something a reader can judge.
+	SclkMax int
+	MclkMax int
+
 	Voltage float64
+
+	// OverDrive tuning in force on this card (AMD only; zero table when the
+	// driver does not expose pp_od_clk_voltage). Read-only — roctop reports
+	// it, tools like gpucap set it.
+	OD odTable
 
 	ThrottleStatus  int
 	ThrottleReasons []string
@@ -453,14 +470,17 @@ func runJSON(extraFlags ...string) map[string]interface{} {
 
 func parseGPU(cardID int, d map[string]interface{}) GpuData {
 	gpu := GpuData{
-		CardID:        cardID,
-		PowerMax:      math.NaN(),
-		PcieTxBytes:   -1,
-		PcieRxBytes:   -1,
-		PcieBwTxDelta: -1,
-		PcieBwRxDelta: -1,
-		PcieTxMBps:    math.NaN(),
-		PcieRxMBps:    math.NaN(),
+		CardID:          cardID,
+		PowerMax:        math.NaN(),
+		PowerCapDefault: math.NaN(),
+		PowerCapMin:     math.NaN(),
+		PowerCapMax:     math.NaN(),
+		PcieTxBytes:     -1,
+		PcieRxBytes:     -1,
+		PcieBwTxDelta:   -1,
+		PcieBwRxDelta:   -1,
+		PcieTxMBps:      math.NaN(),
+		PcieRxMBps:      math.NaN(),
 	}
 
 	series := getString(d, "Card Series")

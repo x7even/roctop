@@ -78,14 +78,19 @@ func (n *nvidiaBackend) collectGPUs() []GpuData {
 
 func parseNvidiaGPULine(f []string) GpuData {
 	gpu := GpuData{
-		Vendor:        "NVIDIA",
-		Backend:       "nvidia",
-		PcieTxBytes:   -1,
-		PcieRxBytes:   -1,
-		PcieBwTxDelta: -1,
-		PcieBwRxDelta: -1,
-		PcieTxMBps:    math.NaN(),
-		PcieRxMBps:    math.NaN(),
+		Vendor:  "NVIDIA",
+		Backend: "nvidia",
+		// Power-limit context and OverDrive state are AMD-only for now:
+		// NaN keeps the renderer from claiming a 0 W default or a 0 mV offset.
+		PowerCapDefault: math.NaN(),
+		PowerCapMin:     math.NaN(),
+		PowerCapMax:     math.NaN(),
+		PcieTxBytes:     -1,
+		PcieRxBytes:     -1,
+		PcieBwTxDelta:   -1,
+		PcieBwRxDelta:   -1,
+		PcieTxMBps:      math.NaN(),
+		PcieRxMBps:      math.NaN(),
 	}
 
 	gpu.CardID = parseInt(f[0], 0)
