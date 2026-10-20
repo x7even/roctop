@@ -66,21 +66,24 @@ func findAmdSysfsDev(drmRoot, pciBus string) amdSysfsDev {
 // way parseGPU initializes them, ready for collectAmdSysfsMetrics to fill.
 func newGpuData(cardID int, backend string) GpuData {
 	return GpuData{
-		CardID:        cardID,
-		Backend:       backend,
-		TempEdge:      math.NaN(),
-		TempJunc:      math.NaN(),
-		TempMem:       math.NaN(),
-		GpuUse:        math.NaN(),
-		MemActivity:   math.NaN(),
-		PowerAvg:      math.NaN(),
-		PowerMax:      math.NaN(),
-		PcieTxBytes:   -1,
-		PcieRxBytes:   -1,
-		PcieBwTxDelta: -1,
-		PcieBwRxDelta: -1,
-		PcieTxMBps:    math.NaN(),
-		PcieRxMBps:    math.NaN(),
+		CardID:          cardID,
+		Backend:         backend,
+		TempEdge:        math.NaN(),
+		TempJunc:        math.NaN(),
+		TempMem:         math.NaN(),
+		GpuUse:          math.NaN(),
+		MemActivity:     math.NaN(),
+		PowerAvg:        math.NaN(),
+		PowerMax:        math.NaN(),
+		PowerCapDefault: math.NaN(),
+		PowerCapMin:     math.NaN(),
+		PowerCapMax:     math.NaN(),
+		PcieTxBytes:     -1,
+		PcieRxBytes:     -1,
+		PcieBwTxDelta:   -1,
+		PcieBwRxDelta:   -1,
+		PcieTxMBps:      math.NaN(),
+		PcieRxMBps:      math.NaN(),
 	}
 }
 
@@ -106,9 +109,15 @@ func collectAmdSysfsMetrics(gpu *GpuData, dev amdSysfsDev) {
 		gpu.GttPercent = float64(gpu.GttUsed) / float64(gpu.GttTotal) * 100
 	}
 
-	// Clocks
+	// Clocks — current level, plus the ceiling of each DPM table so the
+	// reading can be judged against what the card is allowed to reach.
 	gpu.Sclk = parseDpmFreq(d + "/pp_dpm_sclk")
 	gpu.Mclk = parseDpmFreq(d + "/pp_dpm_mclk")
+	gpu.SclkMax = parseDpmFreqMax(d + "/pp_dpm_sclk")
+	gpu.MclkMax = parseDpmFreqMax(d + "/pp_dpm_mclk")
+
+	// OverDrive: voltage offset, core clock offset, memory clock limits.
+	gpu.OD = readOD(d)
 
 	// Performance level
 	gpu.PerfLevel = readStringFile(d + "/power_dpm_force_performance_level")
@@ -163,6 +172,12 @@ func readHwmonMetrics(gpu *GpuData, hwmonDir string) {
 	if !math.IsNaN(powerCapMicro) && powerCapMicro > 0 {
 		gpu.PowerMax = powerCapMicro / 1_000_000
 	}
+	// Cap context: the board default and the range the firmware accepts.
+	// A PowerMax below PowerCapDefault is the signal that something (gpucap,
+	// a vendor tool, a BIOS setting) has capped the card.
+	gpu.PowerCapDefault = wattsFromMicro(hwmonDir + "/power1_cap_default")
+	gpu.PowerCapMin = wattsFromMicro(hwmonDir + "/power1_cap_min")
+	gpu.PowerCapMax = wattsFromMicro(hwmonDir + "/power1_cap_max")
 
 	// Fan
 	fanRPM := readFloatFileNaN(hwmonDir + "/fan1_input")
@@ -176,6 +191,16 @@ func readHwmonMetrics(gpu *GpuData, hwmonDir string) {
 
 	// Voltage (millivolts)
 	gpu.Voltage = readFloatFile(hwmonDir+"/in0_input", 0)
+}
+
+// wattsFromMicro reads a hwmon power file (microwatts) and returns watts,
+// or NaN when the file is absent or reports zero.
+func wattsFromMicro(path string) float64 {
+	v := readFloatFileNaN(path)
+	if math.IsNaN(v) || v <= 0 {
+		return math.NaN()
+	}
+	return v / 1_000_000
 }
 
 // readHwmonTemps reads temp[1-3]_input (millidegrees) and maps them to

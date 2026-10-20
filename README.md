@@ -16,6 +16,7 @@ roctop has two main views — the metrics view and the static info view (`i`):
 - Multi-row braille sparklines with status colouring (steel, amber past 75%, red past 90%) — variation within narrow ranges stays visible
 - PCIe bandwidth monitoring — TX/RX rates with all-time peak tracking (AMD and NVIDIA)
 - Throttle detection with reason decoding (THERMAL, POWER_LIMIT, etc.)
+- Power limit, voltage and OverDrive readout (AMD) — the cap in force against the board default, the live core voltage, and the undervolt / core-clock / memory-clock offsets applied by tools like `gpucap`, with the range the firmware accepts. Read-only: roctop never writes to the driver
 - ECC/RAS error detection — warnings shown in info view with correctable/uncorrectable counts
 
 - Static info view (press `i`): VBIOS, PCIe topology, memory vendor, driver, unique ID
@@ -131,6 +132,35 @@ roctop uses three backends depending on what's available:
 
 At startup, roctop probes ROCm and NVIDIA backends first, records which PCI bus addresses they claim, then discovers any remaining GPUs via sysfs to avoid double-counting.
 
+### Power limit, voltage and OverDrive (AMD)
+
+These come from sysfs on every AMD card, whichever backend supplies the rest of
+the metrics:
+
+| Reading | Source |
+|---------|--------|
+| Cap in force, board default, cap range | `hwmon/power1_cap`, `power1_cap_default`, `power1_cap_min`, `power1_cap_max` |
+| Core voltage | `hwmon/in0_input` |
+| Core / memory clock ceiling | top level of `pp_dpm_sclk` / `pp_dpm_mclk` |
+| Voltage, core-clock and memory-clock offsets + accepted ranges | `pp_od_clk_voltage` |
+
+The `TUNE` row in the metrics view appears only when a card has something to
+report, and the power cap is shown there only when it differs from the board
+default — the `PWR` bar already shows the cap in force, so what it cannot tell
+you is whether something moved it. The info view (`i`) adds the full ranges.
+
+`pp_od_clk_voltage` exists only when the `amdgpu` OverDrive bit is enabled
+(`options amdgpu ppfeaturemask=0xfff7ffff`). Without it the OverDrive rows are
+simply absent; nothing else is affected. The file's format also varies by
+generation — RDNA4 reports offsets, older ASICs report absolute clocks or V/F
+curves — so roctop reports a setting only when the driver states it as an
+offset it understands, rather than guessing. Note that the OverDrive memory
+ceiling is what was *requested*: the DPM table may top out lower, and roctop
+shows both.
+
+Reading these is deliberately all roctop does — applying a cap or an undervolt
+is the job of a separate tool run as root. roctop opens nothing for writing.
+
 ## Project structure
 
 ```
@@ -139,6 +169,8 @@ roctop/
 ├── data.go          # Backend interface, GPU data model, ROCm backend
 ├── nvidia.go        # NVIDIA backend (nvidia-smi CSV queries)
 ├── sysfs.go         # sysfs/hwmon backend (iGPU metrics from kernel)
+├── amdsysfs.go      # AMD sysfs collector (metrics for cards any backend found)
+├── od.go            # pp_od_clk_voltage parser (power/voltage/clock tunables)
 ├── render.go        # Bar charts, braille sparkline renderer, colour gradients
 ├── panel.go         # Per-GPU metric and info panel layouts
 ├── header.go        # Top status bar

@@ -295,6 +295,26 @@ func parseDpmFreq(path string) int {
 	return 0
 }
 
+// parseDpmFreqMax returns the highest frequency listed in a pp_dpm_* table,
+// which is the ceiling the card may clock to under the current settings (an
+// OverDrive memory-clock limit shows up here). Returns 0 when the table is
+// absent or lists nothing parseable.
+func parseDpmFreqMax(path string) int {
+	data := readStringFile(path)
+	if data == "" {
+		return 0
+	}
+	maxMHz := 0
+	for _, line := range strings.Split(data, "\n") {
+		if m := reMhz.FindStringSubmatch(strings.TrimSpace(line)); m != nil {
+			if v, _ := strconv.Atoi(m[1]); v > maxMHz {
+				maxMHz = v
+			}
+		}
+	}
+	return maxMHz
+}
+
 // parsePCISlotName reads a uevent file and extracts PCI_SLOT_NAME.
 func parsePCISlotName(ueventPath string) string {
 	data := readStringFile(ueventPath)
