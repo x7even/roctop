@@ -215,7 +215,6 @@ func TestSanePowerW(t *testing.T) {
 // 450 W board default, clock ceilings, and no voltage or OverDrive data.
 func nvTuned() GpuData {
 	gpu := parseNvidiaGPULine(nvLine("350.00", "450.00"))
-	applyNvidiaStatic([]GpuData{gpu}, nil)
 	gpu.PowerCapDefault = 450
 	gpu.PowerCapMin = 150
 	gpu.SclkMax = 2850
@@ -304,6 +303,35 @@ func TestNvidiaPartialLimits(t *testing.T) {
 	}
 	if v, present := g["mclk_max_mhz"]; present {
 		t.Errorf("mclk_max_mhz = %v, want the key omitted", v)
+	}
+}
+
+// TestRenderMetricLinesNvidiaNoNaN sweeps the panel NVIDIA users actually
+// see. Voltage is NaN on every NVIDIA card and PowerCapMax is now filled on
+// every tick, so an ungated formatter anywhere in the panel would print NaN
+// on exactly the hardware that cannot be tested here.
+func TestRenderMetricLinesNvidiaNoNaN(t *testing.T) {
+	t.Parallel()
+	cards := map[string]GpuData{
+		"limits known":     nvTuned(),
+		"limits absent":    parseNvidiaGPULine(nvLine("350.00", "450.00")),
+		"no limits at all": parseNvidiaGPULine(nvLine("[N/A]", "[N/A]")),
+	}
+	for name, gpu := range cards {
+		for cw := 4; cw <= 120; cw++ {
+			out := plainText(strings.Join(
+				renderMetricLines(gpu, &GpuHistory{}, cw, false), "\n"))
+			if strings.Contains(out, "NaN") {
+				t.Fatalf("%s at cw=%d printed NaN:\n%s", name, cw, out)
+			}
+			if strings.Contains(out, "0mV") {
+				t.Fatalf("%s at cw=%d claims a voltage reading:\n%s", name, cw, out)
+			}
+		}
+		info := plainText(strings.Join(renderInfoLines(gpu, 100, false), "\n"))
+		if strings.Contains(info, "NaN") {
+			t.Errorf("%s info view printed NaN:\n%s", name, info)
+		}
 	}
 }
 
